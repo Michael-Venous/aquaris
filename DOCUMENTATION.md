@@ -169,11 +169,11 @@ fresh simulation, stop and Play again; initial-fill sources are seeded again.
 ## Current fidelity and feature boundaries
 
 **Pressure Speed Limit** (Simulation, default 40 m/s²) bounds how fast the
-pressure solve may push a particle beyond the fastest motion already in the
-scene. Pressure may stop or turn a particle freely, and may speed it up to the
-speed of the fastest liquid (99.5th percentile) or collider present: that is
-momentum being passed on, as in a splash crown or liquid thrown by a paddle.
-Only speed that nothing in the scene has is limited to this rate. Without it,
+pressure solve may push a particle beyond the motion around it. Pressure may
+stop or turn a particle freely, and may speed it up to a speed that several of
+its own neighbours already have, liquid or collider: that is momentum being handed on, as in
+a splash crown, a jet striking a pool or liquid thrown by a paddle. Only speed
+that nothing next to the particle has is limited to this rate. Without it,
 liquid squeezed into a narrow gap — for example between a collapsing column and
 a nearby wall — shot individual droplets out at several times the fastest
 physically possible speed. The value is stated for Earth gravity and rises in
