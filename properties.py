@@ -88,7 +88,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
     mesh_cell_relative: BoolProperty(name="Follow Particle Radius", default=True,
                                      description="Size the surface cells from the particle radius, so the surface keeps its level of detail when the resolution changes; restart to change")
     mesh_cell_factor: FloatProperty(name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
-                                    description="Surface cell size in particle radii. 1 resolves every particle; 2 is about four times faster to mesh and softer; restart to change")
+                                    description="Surface cell size in particle radii. 1 resolves every particle. With Fast quality 2 meshes about three times faster and looks softer; Final and Smooth refine the surface back to one radius, so a larger cell does not speed them up. Restart to change")
     mesh_cell_size: FloatProperty(name="Surface Cell Size", default=0.04, min=0.005,
                                  subtype="DISTANCE", description="Smaller cells give a finer surface; restart to change")
     max_mesh_cells: IntProperty(name="Surface Cell Budget", default=2000000,

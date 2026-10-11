@@ -148,8 +148,9 @@ reserved when the solver starts.
 
 With **Follow Particle Radius** (on by default) the surface cell is
 **Surface Cell** times the particle radius, so the surface keeps its level of
-detail when the resolution changes. 1 resolves every particle; 2 meshes about
-four times faster and looks softer. Turn it off to type an absolute
+detail when the resolution changes. 1 resolves every particle. With Fast
+quality 2 meshes about three times faster and looks softer; Final and Smooth
+refine the surface back to one radius, so a larger cell does not speed them up. Turn it off to type an absolute
 **Surface Cell Size**. Domains saved before 0.2.11 used an absolute size; they
 now follow the radius at a factor of 1 unless this is turned off.
 
