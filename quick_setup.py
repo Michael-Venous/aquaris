@@ -109,6 +109,10 @@ def create(context, preset="DAM_BREAK"):
         if preset == "VISCOUS_POUR":
             p.viscosity = 0.02
             p.kinematic_viscosity = 0.005
+            # Thick liquids read as one glossy material: keep droplets whole
+            # and remove particle-scale dimples from the surface.
+            p.surface_smoothing = 0.9
+            p.droplet_scale = 1.0
             p.surface_tension = 0.2
             p.substeps = 4
     emitter.fumaris_liquid.role = "EMITTER"

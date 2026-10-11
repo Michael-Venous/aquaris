@@ -221,7 +221,14 @@ origins, and inherited instance velocity. No Python OpenVDB library is required.
 **Droplet Size** (Surface and Display) scales detached droplets of roughly one
 to three particles in the surface mesh. At 1 each keeps its particle's volume,
 which makes fine splashes look like beads; lower values (0.3–0.5) draw them as
-finer spray. The simulation is unaffected, and connected liquid is never scaled.
+finer spray. New domains start at 0.5. The simulation is unaffected, and connected liquid is never scaled.
+
+**Surface Smoothing** filters the finished surface mesh to remove the
+particle-scale dimples that make calm or viscous liquid look hammered. Each
+connected body's volume is restored afterwards and vertices move at most about
+one and a half particle radii at full strength, so thin sheets soften rather than
+disappear. New domains start at 0.4 and the Viscous preset at 0.9; 0 gives the
+unfiltered reconstruction.
 
 **Surface Motion Vectors** stores a velocity for every surface vertex,
 interpolated from nearby particles, as the mesh's `velocity` point attribute.
