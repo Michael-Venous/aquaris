@@ -73,7 +73,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
     mesh_cell_size: FloatProperty(name="Surface Cell Size", default=0.04, min=0.005,
                                  subtype="DISTANCE", description="Smaller cells give a finer surface; restart to change")
     max_mesh_cells: IntProperty(name="Surface Cell Budget", default=2000000,
-                                min=1000, max=16000000)
+                                min=1000, max=64000000)
     mesh_quality: EnumProperty(name="Mesh Quality", items=[
         ("FAST", "Fast", "Smooth surface on the requested grid"),
         ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time"),
