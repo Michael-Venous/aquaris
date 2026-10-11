@@ -4,7 +4,9 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import stat
+import sys
 import tempfile
 import uuid
 
@@ -13,6 +15,83 @@ from .protocol import read_message, write_message
 SCHEMA = 1
 MARKER = "fumaris-liquid-cache.json"
 _SAFE_SLOT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+LOCK = ".writer.lock"
+
+
+def _read_text(path):
+    try:
+        return Path(path).read_text(encoding="ascii").strip() or None
+    except (OSError, ValueError):
+        return None
+
+
+def _boot_id():
+    return _read_text("/proc/sys/kernel/random/boot_id")
+
+
+def _machine_id():
+    return _read_text("/etc/machine-id")
+
+
+def _pid_namespace():
+    try:
+        return os.readlink("/proc/self/ns/pid") or None
+    except OSError:
+        return None
+
+
+def _process_start(pid):
+    """Kernel start time of a live process, or None where it cannot be read."""
+    try:
+        data = Path(f"/proc/{pid}/stat").read_bytes()
+        return data.rsplit(b")", 1)[1].split()[19].decode("ascii")
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _owner_record():
+    pid = os.getpid()
+    return json.dumps({"pid": pid, "host": socket.gethostname(), "machine": _machine_id(),
+                       "ns": _pid_namespace(), "boot": _boot_id(),
+                       "start": _process_start(pid)}).encode("ascii")
+
+
+def _owner_gone(data):
+    """True only when the recorded writer provably no longer exists.
+
+    Linux only. The record must name this machine, this PID namespace and a
+    known boot; every doubt (another or unknown machine or sandbox, an
+    unreadable or pre-0.2.2 record, a live process with the same PID and an
+    unknown start time) keeps the slot locked.
+    """
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        record = json.loads(data.decode("ascii"))
+    except (ValueError, UnicodeDecodeError):
+        return False
+    if not isinstance(record, dict):
+        return False
+    pid = record.get("pid")
+    if type(pid) is not int or pid <= 0:
+        return False
+    here = {"host": socket.gethostname(), "machine": _machine_id(), "ns": _pid_namespace(), "boot": _boot_id()}
+    for key in ("host", "machine", "ns"):
+        if not isinstance(record.get(key), str) or not here[key] or record[key] != here[key]:
+            return False
+    boot, start = record.get("boot"), record.get("start")
+    if not isinstance(boot, str) or not boot or not here["boot"]:
+        return False
+    if boot != here["boot"]:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except (OSError, OverflowError):
+        return False
+    current_start = _process_start(pid)
+    return isinstance(start, str) and bool(start) and bool(current_start) and start != current_start
 
 
 class Cache:
@@ -67,14 +146,66 @@ class Cache:
             if any(self.path.iterdir()):
                 raise RuntimeError("Cache slot contains files without a liquid ownership marker")
             self._atomic_bytes(marker, json.dumps(self._metadata()).encode("utf-8"))
-        lock = self.path / ".writer.lock"
         self._lock_release = None
-        try:
-            self._lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError as exc:
-            raise RuntimeError("Cache slot is locked by another simulation; choose a different slot") from exc
-        os.write(self._lock_fd, str(os.getpid()).encode("ascii"))
+        self._lock_fd = self._create_lock("Cache slot is locked by another simulation; choose a different slot")
+        os.write(self._lock_fd, _owner_record())
         return self
+
+    def _create_lock(self, refusal):
+        """Exclusively create the writer lock, first clearing a crashed writer's."""
+        lock = self.path / LOCK
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        try:
+            return os.open(lock, flags, 0o600)
+        except FileExistsError as exc:
+            if not self._remove_crashed_lock():
+                raise RuntimeError(refusal) from exc
+        try:
+            # Still exclusive: a normal acquirer may have won since the removal.
+            return os.open(lock, flags, 0o600)
+        except FileExistsError as exc:
+            raise RuntimeError(refusal) from exc
+
+    def _remove_crashed_lock(self):
+        """Remove the writer lock of a process that no longer exists.
+
+        Returns True when the lock path is clear for a fresh exclusive create.
+        Recoverers exclude each other with a kernel lock on the slot directory,
+        which a crashed recoverer cannot leave behind. Any error keeps the slot
+        locked.
+        """
+        try:
+            import fcntl
+        except ImportError:
+            return False
+        lock = self.path / LOCK
+        guard = fd = None
+        try:
+            guard = os.open(self.path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fd = os.open(lock, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+            except FileNotFoundError:
+                return True
+            examined = os.fstat(fd)
+            if not stat.S_ISREG(examined.st_mode) or not _owner_gone(os.read(fd, 4096)):
+                return False
+            # The examined descriptor stays open so its inode cannot be reused
+            # by a new lock before the identity comparison and unlink.
+            try:
+                current = os.lstat(lock)
+            except FileNotFoundError:
+                return True
+            if (current.st_dev, current.st_ino) != (examined.st_dev, examined.st_ino):
+                return False
+            os.unlink(lock)
+            return True
+        except (OSError, OverflowError):
+            return False
+        finally:
+            for descriptor in (fd, guard):
+                if descriptor is not None:
+                    os.close(descriptor)
 
     @staticmethod
     def _atomic_bytes(path, data):
@@ -94,7 +225,7 @@ class Cache:
             return
         self._lock_release_started = True
         if self._lock_release is None:
-            self._lock_release = {"path": self.path / ".writer.lock",
+            self._lock_release = {"path": self.path / LOCK,
                                   "identity": None, "phase": "UNATTEMPTED",
                                   "close_error": None}
         receipt = self._lock_release
@@ -190,9 +321,30 @@ class Cache:
         if not self.path.exists():
             return
         self._verify()
-        if (self.path / ".writer.lock").exists():
-            raise RuntimeError("Cannot delete a cache slot while a simulation owns it")
-        shutil.rmtree(self.path)
+        # Own the writer lock so no simulation can start in this slot, then
+        # take the slot out of its path before removing anything. The lock is
+        # its file, not the descriptor, which is closed so the rename also
+        # works where open files pin their directory.
+        lock = self.path / LOCK
+        fd = self._create_lock("Cannot delete a cache slot while a simulation owns it")
+        created = None
+        try:
+            try:
+                created = os.fstat(fd)
+                os.write(fd, _owner_record())
+            finally:
+                os.close(fd)
+            doomed = self.path.with_name(".deleting-" + uuid.uuid4().hex)
+            os.rename(self.path, doomed)
+        except BaseException:
+            try:
+                current = os.lstat(lock)
+                if created is not None and (current.st_dev, current.st_ino) == (created.st_dev, created.st_ino):
+                    os.unlink(lock)
+            except OSError:
+                pass
+            raise
+        shutil.rmtree(doomed)
 
     def __enter__(self):
         return self.acquire()

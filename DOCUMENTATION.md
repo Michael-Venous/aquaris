@@ -136,10 +136,17 @@ Choose a new slot or use **Delete Slot** to remove the current domain's owned
 slot. A writer lock prevents simultaneous writes; a cancelled run retains only
 completed frames. Cache frames are versioned and written atomically.
 
-Normal Stop/Cancel releases the writer lock. A crashed Blender process can leave
-its PID lock file behind; this build does not recover stale locks automatically.
-Choose a fresh slot for another run. Completed frames in the old slot remain
-available for playback.
+Normal Stop/Cancel releases the writer lock. If Blender crashes or is killed
+during a run, its lock stays in the slot. On Linux the next **Delete Slot**, Bake
+or Record Preview on that slot removes the lock automatically once the process
+that wrote it no longer exists on this computer. Completed frames in the slot
+remain available for playback; because a run needs an empty slot, use **Delete
+Slot** (or choose a new slot) before simulating there again. The lock is kept,
+and the slot stays locked, whenever that cannot be established: a lock written
+by another computer or from inside a different sandbox (for example a Flatpak
+Blender), by an Aquaris version before 0.2.2, or on Windows and macOS. In those
+cases choose a fresh slot, or remove `.writer.lock` from the slot folder yourself
+after confirming no simulation is using it.
 
 Enable **Timeline Cache Playback**, scrub frames, or reopen the scene to load
 the chosen slot. Missing frames clear the output so a render cannot use stale
