@@ -1,9 +1,71 @@
 """Explicit world/object/bounds texture coordinates for particle emission masks."""
 
+from pathlib import Path
+import re
+
 import numpy as np
 
 
-def active(props, positions, geometry=None, matrix=None, image_cache=None):
+def _pixels(image):
+    width, height = image.size
+    if width <= 0 or height <= 0 or len(image.pixels) != width * height * 4:
+        raise RuntimeError("The mask image has no readable RGBA pixel data")
+    pixels = np.empty(width * height * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    return pixels.reshape((height, width, 4))
+
+
+def _sequence_pixels(image, number, cache):
+    """RGBA of the sequence file for a file number, holding the first and last files.
+
+    A sequence image exposes no pixels of its own; the numbered file is read
+    through a temporary image with the sequence's color settings.
+    """
+    import bpy
+    first = Path(bpy.path.abspath(image.filepath, library=image.library))
+    digits = re.search(r"\d+(?=\D*$)", first.stem)
+    if digits is None:
+        raise RuntimeError("The mask image sequence file name has no frame number: " + first.name)
+    head, tail = first.stem[:digits.start()], first.stem[digits.end():] + first.suffix
+    width = len(digits.group())
+    listing = ("sequence", str(first.parent), head, tail, width)
+    numbers = cache.get(listing) if cache is not None else None
+    if numbers is None:
+        pattern = re.compile(re.escape(head) + r"(\d+)" + re.escape(tail) + r"\Z")
+        try:
+            names = [entry.name for entry in first.parent.iterdir()]
+        except OSError as exc:
+            raise RuntimeError("The mask image sequence folder cannot be read: " + str(first.parent)) from exc
+        # Only names Blender itself would generate for this sequence.
+        numbers = sorted(int(match.group(1)) for match in map(pattern.match, names)
+                         if match and match.group() == f"{head}{int(match.group(1)):0{width}d}{tail}")
+        if cache is not None:
+            cache[listing] = numbers
+    if not numbers:
+        raise RuntimeError("The mask image sequence has no files: " + str(first))
+    number = min(max(number, numbers[0]), numbers[-1])
+    path = first.parent / f"{head}{number:0{width}d}{tail}"
+    if number not in numbers:
+        raise RuntimeError("The mask image sequence is missing " + path.name)
+    key = ("sequence frame", str(path))
+    pixels = cache.get(key) if cache is not None else None
+    if pixels is None:
+        try:
+            loaded = bpy.data.images.load(str(path), check_existing=False)
+        except RuntimeError as exc:
+            raise RuntimeError("The mask image sequence file cannot be loaded: " + path.name) from exc
+        try:
+            loaded.colorspace_settings.name = image.colorspace_settings.name
+            loaded.alpha_mode = image.alpha_mode
+            pixels = _pixels(loaded)
+        finally:
+            bpy.data.images.remove(loaded)
+        if cache is not None:
+            cache[key] = pixels
+    return pixels
+
+
+def active(props, positions, geometry=None, matrix=None, image_cache=None, frame=None):
     if props.mask_type == "NONE" or not len(positions):
         return np.ones(len(positions), dtype=bool)
     if matrix is None:
@@ -34,19 +96,20 @@ def active(props, positions, geometry=None, matrix=None, image_cache=None):
         image = props.mask_image
         if image is None:
             raise RuntimeError("Assign an Image for this emitter's image mask")
-        if image.source not in {"FILE", "GENERATED"}:
-            raise RuntimeError("Image masks support static FILE or GENERATED images; movie, sequence and UDIM images require a single-frame image")
-        width, height = image.size
-        if width <= 0 or height <= 0 or len(image.pixels) != width * height * 4:
-            raise RuntimeError("The mask image has no readable RGBA pixel data")
-        key = image.as_pointer()
-        pixels = image_cache.get(key) if image_cache is not None else None
-        if pixels is None:
-            pixels = np.empty(width * height * 4, dtype=np.float32)
-            image.pixels.foreach_get(pixels)
-            pixels = pixels.reshape((height, width, 4))
-            if image_cache is not None:
-                image_cache[key] = pixels
+        if image.source == "SEQUENCE":
+            if frame is None:
+                raise RuntimeError("Image sequence masks need the simulation frame")
+            pixels = _sequence_pixels(image, int(frame) + props.mask_image_offset, image_cache)
+        elif image.source in {"FILE", "GENERATED"}:
+            key = image.as_pointer()
+            pixels = image_cache.get(key) if image_cache is not None else None
+            if pixels is None:
+                pixels = _pixels(image)
+                if image_cache is not None:
+                    image_cache[key] = pixels
+        else:
+            raise RuntimeError("Image masks support FILE, GENERATED and SEQUENCE images; movie and UDIM images require image files")
+        height, width = pixels.shape[:2]
         axes = {"XY": (0, 1), "XZ": (0, 2), "YZ": (1, 2)}[props.mask_projection]
         uv = coordinates[:, axes]
         inside = np.all((uv >= 0) & (uv <= 1), axis=1)

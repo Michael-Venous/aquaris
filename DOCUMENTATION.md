@@ -93,10 +93,15 @@ an initial velocity transformed from object space. These are explicit evaluated
 attributes read directly from evaluated geometry.
 
 **Texture Mask** additionally supports native procedural Blender Texture
-datablocks and static FILE/GENERATED images. The attribute and texture masks must
-each pass Mask Threshold. Procedural textures use Blender's scalar intensity;
-image masks use bilinear RGB luminance multiplied by alpha. Image sequences,
-movies, UDIM tiles and node-based legacy Texture graphs are rejected explicitly.
+datablocks, static FILE/GENERATED images and numbered image sequences. The
+attribute and texture masks must each pass Mask Threshold. Procedural textures
+use Blender's scalar intensity; image masks use bilinear RGB luminance multiplied
+by alpha. For an image whose Source is Image Sequence, each simulation frame
+reads the file numbered scene frame plus **Sequence Offset** from the folder of
+the image's file; frames before the first or after the last file hold that file,
+and a missing number inside the range stops the run with the file name. The
+image datablock's own frame, start and cyclic settings are not used. Movies,
+UDIM tiles and node-based legacy Texture graphs are rejected explicitly.
 
 Source Bounds maps each evaluated geometry's local bounds to 0–1. Procedural
 textures then receive the native -1–1 coordinates; image projection uses 0–1 UV.

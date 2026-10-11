@@ -128,6 +128,7 @@ class SceneExporter:
         self.next_emission = {}
         self.time = 0.0
         self.image_cache = {}
+        self.mask_frame = None
         self.last_boundary_arrays = None
         self.solid_cache = {}
 
@@ -346,7 +347,7 @@ class SceneExporter:
         if mask is not None:
             active = mask[nearest] >= props.mask_threshold
             positions, nearest = positions[active], nearest[active]
-        active = masks.active(props, positions, geometry, image_cache=self.image_cache)
+        active = masks.active(props, positions, geometry, image_cache=self.image_cache, frame=self.mask_frame)
         positions, nearest = positions[active], nearest[active]
         velocities = self._velocities(obj, props, positions, nearest, motion_geometry, history_key, interior_samples=True)
         if props.normal_velocity and bvh is None and len(triangles):
@@ -551,7 +552,7 @@ class SceneExporter:
                         velocities.append(np.asarray(particle.velocity) * props.inherited_motion + np.asarray(props.velocity))
             positions = np.asarray(points).reshape((-1, 3))
             velocities = np.asarray(velocities).reshape((-1, 3))
-            active = masks.active(props, positions, matrix=np.asarray(evaluated.matrix_world), image_cache=self.image_cache)
+            active = masks.active(props, positions, matrix=np.asarray(evaluated.matrix_world), image_cache=self.image_cache, frame=self.mask_frame)
             return positions[active], velocities[active], None
         data = evaluated.data
         position = _attribute(data, "position", True)
@@ -575,12 +576,13 @@ class SceneExporter:
         if mask is not None:
             nearest = nearest[mask >= props.mask_threshold]
         positions = world[nearest]
-        active = masks.active(props, positions, geometry, image_cache=self.image_cache)
+        active = masks.active(props, positions, geometry, image_cache=self.image_cache, frame=self.mask_frame)
         positions, nearest = positions[active], nearest[active]
         return positions, self._velocities(obj, props, positions, nearest, geometry), geometry
 
     def frame(self, depsgraph, dt, frame):
         self.dt = max(dt, 1e-8)
+        self.mask_frame = frame
         self.birth_solid_cache.clear()
         self.birth_motion_cache.clear()
         self.source_volume_active.clear()

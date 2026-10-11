@@ -52,6 +52,8 @@ def _participant(layout, context):
                 mask.prop(p, "mask_texture" if p.mask_type == "TEXTURE" else "mask_image")
                 mask.prop(p, "mask_coordinates")
                 if p.mask_type == "IMAGE":
+                    if p.mask_image is not None and p.mask_image.source == "SEQUENCE":
+                        mask.prop(p, "mask_image_offset")
                     mask.prop(p, "mask_projection")
                 for name in ("mask_scale", "mask_offset", "mask_threshold"):
                     mask.prop(p, name)

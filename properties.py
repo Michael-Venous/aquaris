@@ -139,6 +139,9 @@ class LiquidProperties(bpy.types.PropertyGroup):
     ], default="NONE")
     mask_texture: PointerProperty(name="Mask Texture", type=bpy.types.Texture)
     mask_image: PointerProperty(name="Mask Image", type=bpy.types.Image)
+    mask_image_offset: IntProperty(name="Sequence Offset", default=0,
+                                   description="An image sequence mask uses the file numbered scene frame plus this offset; "
+                                               "the first and last files are held outside the sequence")
     mask_coordinates: EnumProperty(name="Coordinates", items=[
         ("BOUNDS", "Source Bounds", "Map each evaluated geometry's local bounds to zero through one"),
         ("OBJECT", "Object", "Use source geometry local coordinates"),
