@@ -180,9 +180,12 @@ def _draw(layout, context):
         box = _section(layout, "budgets", "Allocation and Budgets", closed=True)
         if box is not None:
             box.enabled = running is None
-            box.prop(p, "max_particles")
+            box.prop(p, "auto_budgets")
+            manual = box.column()
+            manual.enabled = not p.auto_budgets
+            manual.prop(p, "max_particles")
+            manual.prop(p, "max_boundary")
             box.prop(p, "max_whitewater")
-            box.prop(p, "max_boundary")
             box.label(text="Initial GPU region (auto expands)")
             box.prop(p, "bounds_min")
             box.prop(p, "bounds_max")
@@ -190,8 +193,11 @@ def _draw(layout, context):
         if box is not None:
             structural = box.column()
             structural.enabled = running is None
-            structural.prop(p, "mesh_cell_size")
-            structural.prop(p, "max_mesh_cells")
+            structural.prop(p, "mesh_cell_relative")
+            structural.prop(p, "mesh_cell_factor" if p.mesh_cell_relative else "mesh_cell_size")
+            cells = structural.row()
+            cells.enabled = not p.auto_budgets
+            cells.prop(p, "max_mesh_cells")
             structural.prop(p, "mesh_quality")
             structural.prop(p, "droplet_scale")
             structural.prop(p, "surface_smoothing")

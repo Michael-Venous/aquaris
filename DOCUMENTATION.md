@@ -123,8 +123,26 @@ geometry and dense boundaries need careful testing at the chosen radius.
 Effectors support localized force, local-Z wind, local-Z vortex and turbulence.
 Outflows remove particles inside their evaluated **world-aligned bounding box**.
 The runtime supports 31 effectors and 32 outflows. Collider surfaces are sampled
-up to the domain's **Collider Sample Budget** (default 200,000, maximum 4,000,000);
-finer particle radii need a larger budget and more GPU memory.
+up to 4,000,000 samples; finer particle radii need more of them and more GPU
+memory.
+
+## Limits and surface detail
+
+**Automatic Limits** (on by default) lets a domain use up to the solver's own
+limits: 8 million liquid particles, 4 million collider samples and 64 million
+surface cells. Nothing is reserved in advance; memory is taken as the
+simulation grows, so lowering the particle radius simply works until the GPU
+runs out, which is reported. Turn it off to use the **Particle Budget**,
+**Collider Sample Budget** and **Surface Cell Budget** as early stops for a
+runaway setup. The Whitewater Budget is always fixed, because its memory is
+reserved when the solver starts.
+
+With **Follow Particle Radius** (on by default) the surface cell is
+**Surface Cell** times the particle radius, so the surface keeps its level of
+detail when the resolution changes. 1 resolves every particle; 2 meshes about
+four times faster and looks softer. Turn it off to type an absolute
+**Surface Cell Size**. Domains saved before 0.2.11 used an absolute size; they
+now follow the radius at a factor of 1 unless this is turned off.
 
 ## Output, recording and rendering
 

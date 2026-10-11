@@ -33,6 +33,32 @@ def participants(scene, domain):
                 yield obj
 
 
+PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT = 8_000_000, 4_000_000, 64_000_000
+
+
+def limits(p):
+    """(particles, collider samples, surface cells) this domain may use.
+
+    The solver allocates as the simulation grows, so the automatic limits cost
+    nothing until they are reached; the fixed budgets remain for users who
+    want an early stop.
+    """
+    if p.auto_budgets:
+        return PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT
+    return p.max_particles, p.max_boundary, p.max_mesh_cells
+
+
+def mesh_cell(p):
+    """Surface cell size: a multiple of the particle radius unless set by hand."""
+    return max(0.005, p.particle_radius * p.mesh_cell_factor) if p.mesh_cell_relative else p.mesh_cell_size
+
+
+def _over(p, what, advice):
+    if p.auto_budgets:
+        return f"{what} exceeds what the solver supports; {advice}"
+    return f"{what} exceeds its budget; {advice}, raise the budget or turn on Automatic Limits"
+
+
 def settings(scene, domain):
     p = domain.fumaris_liquid
     if any(p.bounds_max[i] <= p.bounds_min[i] for i in range(3)):
@@ -56,9 +82,9 @@ def settings(scene, domain):
         # ordinary gravity-driven flow is never capped. Zero gravity keeps it.
         "pressure_speed_gain": min(1e6, p.pressure_speed_gain / scale *
                                    max(1.0, math.sqrt(sum(v * v for v in p.gravity)) / 9.81)),
-        "max_particles": p.max_particles,
+        "max_particles": limits(p)[0],
         "max_whitewater": p.max_whitewater,
-        "max_boundary": p.max_boundary,
+        "max_boundary": limits(p)[1],
         "whitewater": p.whitewater,
         "whitewater_generation": p.whitewater_generation,
         "whitewater_energy_min": p.whitewater_energy_min / (scale * scale),
@@ -70,12 +96,12 @@ def settings(scene, domain):
         "gravity": [v / scale for v in p.gravity],
         "bounds_min": list(p.bounds_min),
         "bounds_max": list(p.bounds_max),
-        "mesh_cell_size": p.mesh_cell_size,
+        "mesh_cell_size": mesh_cell(p),
         "mesh_quality": p.mesh_quality,
         "droplet_scale": p.droplet_scale,
         "surface_smoothing": p.surface_smoothing,
         "surface_velocity": p.surface_velocity,
-        "max_mesh_cells": p.max_mesh_cells,
+        "max_mesh_cells": limits(p)[2],
     }
 
 
@@ -261,8 +287,8 @@ class SceneExporter:
         return sorted(result, key=lambda item: item[0])
 
     def _budget(self, count):
-        if count > self.domain.fumaris_liquid.max_particles:
-            raise RuntimeError("Emitter sampling exceeds the particle budget; increase radius or budget")
+        if count > limits(self.domain.fumaris_liquid)[0]:
+            raise RuntimeError(_over(self.domain.fumaris_liquid, "Emitter sampling", "increase the particle radius"))
 
     def _volume(self, obj, props, geometry, spacing, history_key=None, sample_time=None):
         motion_geometry = geometry
@@ -520,15 +546,15 @@ class SceneExporter:
             weight_parts = [weights[np.all(weights >= 0, axis=1)]]
             for first, second in ((0, 1), (1, 2), (2, 0)):
                 segments = max(1, math.ceil(np.linalg.norm(world[triangle[first]] - world[triangle[second]]) / spacing))
-                if segments > self.domain.fumaris_liquid.max_boundary:
-                    raise RuntimeError(f"{obj.name}: collider edge sampling exceeds the collider sample budget; raise the radius or the budget")
+                if segments > limits(self.domain.fumaris_liquid)[1]:
+                    raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider edge sampling", "increase the particle radius"))
                 fractions = np.linspace(0, 1, segments + 1)
                 edge_weights = np.zeros((segments + 1, 3))
                 edge_weights[:, first], edge_weights[:, second] = 1 - fractions, fractions
                 weight_parts.append(edge_weights)
             weights = np.concatenate(weight_parts)
-            if sum(len(part) for part in points) + len(weights) > self.domain.fumaris_liquid.max_boundary:
-                raise RuntimeError(f"{obj.name}: collider sampling exceeds the collider sample budget; simplify the mesh, raise the radius or raise the budget")
+            if sum(len(part) for part in points) + len(weights) > limits(self.domain.fumaris_liquid)[1]:
+                raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider sampling", "simplify the mesh or increase the particle radius"))
             positions = weights @ world[triangle]
             if old_world is not None:
                 velocity = (positions - weights @ old_world[triangle]) / self.dt
@@ -734,8 +760,8 @@ class SceneExporter:
         arrays = {"positions": concat(emitted), "velocities": concat(emitted_velocity),
                   "boundary_positions": concat(boundary), "boundary_velocities": concat(boundary_velocity)}
         self._budget(len(arrays["positions"]))
-        if len(arrays["boundary_positions"]) > p.max_boundary:
-            raise RuntimeError("Combined colliders exceed the collider sample budget; simplify geometry, increase particle radius or raise the budget")
+        if len(arrays["boundary_positions"]) > limits(p)[1]:
+            raise RuntimeError(_over(p, "Combined collider sampling", "simplify geometry or increase the particle radius"))
         if len(forces) > 31 or len(outflows) > 32:
             raise RuntimeError("A simulation supports at most 31 effectors and 32 outflows")
         boundary_arrays = tuple(np.ascontiguousarray(arrays[name], dtype='<f4')

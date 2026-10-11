@@ -63,7 +63,9 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
     bounds_max: FloatVectorProperty(name="Maximum", default=(3, 2, 4), size=3,
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
-    max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=2000000)
+    auto_budgets: BoolProperty(name="Automatic Limits", default=True,
+                               description="Let particles, collider samples and surface cells grow to the solver's own limits (8 million particles, 4 million collider samples, 64 million surface cells). Memory is taken as the simulation grows, so nothing is reserved in advance. Turn off to set smaller budgets that stop a runaway setup early")
+    max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000)
     max_whitewater: IntProperty(name="Whitewater Budget", default=25000, min=0, max=1000000)
     max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=4000000,
                               description="Collider surface samples accepted per frame; finer particles need more")
@@ -83,6 +85,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_buoyancy: FloatProperty(name="Bubble Buoyancy", default=4, min=-100, max=100,
                                       description="Bubble acceleration in metres per second squared")
     whitewater_drag: FloatProperty(name="Drag", default=0.4, min=0, max=1)
+    mesh_cell_relative: BoolProperty(name="Follow Particle Radius", default=True,
+                                     description="Size the surface cells from the particle radius, so the surface keeps its level of detail when the resolution changes; restart to change")
+    mesh_cell_factor: FloatProperty(name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
+                                    description="Surface cell size in particle radii. 1 resolves every particle; 2 is about four times faster to mesh and softer; restart to change")
     mesh_cell_size: FloatProperty(name="Surface Cell Size", default=0.04, min=0.005,
                                  subtype="DISTANCE", description="Smaller cells give a finer surface; restart to change")
     max_mesh_cells: IntProperty(name="Surface Cell Budget", default=2000000,
