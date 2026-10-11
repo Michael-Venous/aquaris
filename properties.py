@@ -47,6 +47,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
     boundary_viscosity: FloatProperty(name="Boundary Viscosity", default=1, min=0, max=10,
                                       description="Multiplier for viscous coupling to moving collider surfaces")
     surface_tension: FloatProperty(name="Surface Tension", default=0.1, min=0, max=10)
+    pressure_speed_gain: FloatProperty(name="Pressure Speed Limit", default=40, min=0, max=100000,
+                                       description="Most speed that pressure may add to a particle per second, in metres "
+                                                   "per second squared. Stops droplets being shot out of squeezed gaps "
+                                                   "at many times the flow speed; 0 disables the limit")
     gravity: FloatVectorProperty(name="Gravity", default=(0, 0, -9.81), size=3)
     bounds_min: FloatVectorProperty(name="Minimum", default=(-3, -2, -1), size=3,
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")

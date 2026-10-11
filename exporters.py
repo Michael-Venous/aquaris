@@ -52,6 +52,7 @@ def settings(scene, domain):
         "viscosity_tolerance": p.viscosity_tolerance,
         "boundary_viscosity": p.boundary_viscosity,
         "surface_tension": p.surface_tension,
+        "pressure_speed_gain": p.pressure_speed_gain / scale,
         "max_particles": p.max_particles,
         "max_whitewater": p.max_whitewater,
         "max_boundary": p.max_boundary,

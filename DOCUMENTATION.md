@@ -168,6 +168,15 @@ fresh simulation, stop and Play again; initial-fill sources are seeded again.
 
 ## Current fidelity and feature boundaries
 
+**Pressure Speed Limit** (Simulation, default 40 m/s²) bounds how much speed the
+pressure solve may add to a particle per second. Pressure may still stop or turn
+a particle freely. Without it, liquid squeezed into a narrow gap — for example
+between a collapsing column and a nearby wall — could shoot individual droplets
+out at several times the fastest physically possible speed, which showed as
+scattered blobs flying far above a splash. Set it to 0 to disable the limit, or
+raise it for deliberately violent small-scale impacts.
+
+
 Nebula uses position-based fluids. **Kinematic Viscosity** is the implicit
 viscosity coefficient in square metres per second; it is converted through the
 scene's squared unit scale. **Velocity Smoothing** is separate bounded XSPH

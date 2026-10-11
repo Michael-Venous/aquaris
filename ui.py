@@ -155,7 +155,8 @@ def _draw(layout, context):
             structural = box.column()
             structural.enabled = running is None
             structural.prop(p, "particle_radius")
-            for name in ("iterations", "substeps", "speed", "gravity", "kinematic_viscosity", "viscosity", "surface_tension"):
+            for name in ("iterations", "substeps", "speed", "gravity", "kinematic_viscosity", "viscosity", "surface_tension",
+                         "pressure_speed_gain"):
                 box.prop(p, name)
             if p.kinematic_viscosity > 0:
                 for name in ("viscosity_iterations", "viscosity_tolerance", "boundary_viscosity"):
