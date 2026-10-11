@@ -15,7 +15,8 @@ from ._tasks import result_owned, submit_owned
 
 _active = None
 _playback_guard = False
-_render_frames = {}  # Scene pointer -> frame being rendered.
+_render_frames = {}  # Scene pointer -> time being rendered, in frames.
+_shown_frames = {}  # Scene pointer -> cached frame last shown by playback.
 
 
 def active():
@@ -296,6 +297,7 @@ def start(scene, domain, bake=False):
         raise RuntimeError("Stop the active liquid simulation first")
     owner = Session(scene, domain, bake)
     _active = owner
+    _shown_frames.clear()  # The solver now decides what is displayed.
     try:
         if not bpy.app.timers.is_registered(_timer):
             bpy.app.timers.register(_timer, first_interval=0.02)
@@ -370,24 +372,40 @@ def _show_cached(scene, frame):
                 p.status = f"No cache for frame {frame}"
             except Exception as exc:
                 p.last_error = str(exc)
+        _shown_frames[scene.as_pointer()] = frame
     finally:
         _playback_guard = False
+
+
+def _nearest_frame(scene):
+    return scene.frame_current + (1 if scene.frame_subframe >= 0.5 else 0)
 
 
 @persistent
 def _frame_change(scene, depsgraph=None):
     if _active is not None or _playback_guard:
         return
-    rendering = _render_frames.get(scene.as_pointer())
+    key = scene.as_pointer()
+    rendering = _render_frames.get(key)
     if rendering is not None:
         # A motion-blurred render evaluates the scene at the shutter's open and
         # close times. Loading the neighbouring frame there swaps the surface
         # for one with other topology in the middle of the renderer's export
         # (measured: 110 s instead of 3 s for four Cycles samples). The frame
         # being rendered stays; its motion comes from the velocity attribute.
-        if abs(scene.frame_current + scene.frame_subframe - rendering) <= max(1.0, scene.render.motion_blur_shutter):
+        # The next animation frame announces itself through render_pre first,
+        # so anything within a shutter and a frame of this one is such a step.
+        if abs(scene.frame_current + scene.frame_subframe - rendering) <= scene.render.motion_blur_shutter + 1.0:
             return
-        _render_frames.pop(scene.as_pointer(), None)  # A render that never reported its end.
+        _render_frames.pop(key, None)  # A render that never reported its end.
+    if scene.frame_subframe:
+        # Between frames the nearer cached frame is shown, and kept if it is
+        # already there. A scene rendered through another scene's compositor
+        # announces no render, but its shutter times still land here.
+        frame = _nearest_frame(scene)
+        if _shown_frames.get(key) != frame:
+            _show_cached(scene, frame)
+        return
     _show_cached(scene, scene.frame_current)
 
 
@@ -395,15 +413,17 @@ def _frame_change(scene, depsgraph=None):
 def _render_pre(scene, *_):
     if _active is not None or _playback_guard:
         return
-    _render_frames.pop(scene.as_pointer(), None)
-    _show_cached(scene, scene.frame_current)
-    _render_frames[scene.as_pointer()] = scene.frame_current
+    key = scene.as_pointer()
+    _render_frames.pop(key, None)
+    _show_cached(scene, _nearest_frame(scene))
+    _render_frames[key] = scene.frame_current + scene.frame_subframe
 
 
 @persistent
 def _render_end(scene=None, *_):
     if scene is None:
         _render_frames.clear()
+        _shown_frames.clear()
     else:
         _render_frames.pop(scene.as_pointer(), None)
 

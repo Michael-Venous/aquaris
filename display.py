@@ -120,6 +120,11 @@ def _particle_nodes(obj, material, radius, whitewater=False):
 WHITEWATER_RADIUS = "Whitewater Radius"
 
 
+def _same(first, second):
+    """Node sockets hold single precision; an absolute tolerance misreads large radii as edits."""
+    return abs(first - second) <= 1e-6 * max(1.0, abs(first), abs(second))
+
+
 def _whitewater_nodes(obj, material, radius, group=None):
     """Whitewater as a renderer point cloud.
 
@@ -175,7 +180,7 @@ def _whitewater_nodes(obj, material, radius, group=None):
     links.new(points.outputs["Points"], shade.inputs["Geometry"])
     links.new(shade.outputs["Geometry"], output.inputs["Geometry"])
     obj["fumaris_liquid_display_version"] = 3
-    obj["fumaris_liquid_display_radius"] = radius
+    obj["fumaris_liquid_display_radius"] = float(size.inputs[1].default_value)
 
 
 def _refresh_whitewater_nodes(obj, radius):
@@ -190,11 +195,11 @@ def _refresh_whitewater_nodes(obj, radius):
         if size is None or size.bl_idname != "ShaderNodeMath" or size.operation != "MULTIPLY":
             return
         current = float(size.inputs[1].default_value)
-        if abs(current - float(obj.get("fumaris_liquid_display_radius", radius))) > 1e-7:
+        if not _same(current, float(obj.get("fumaris_liquid_display_radius", radius))):
             return  # The user edited this radius directly in Geometry Nodes.
-        if abs(current - radius) > 1e-7:
+        if not _same(current, radius):
             size.inputs[1].default_value = radius
-        obj["fumaris_liquid_display_radius"] = radius
+        obj["fumaris_liquid_display_radius"] = float(size.inputs[1].default_value)
         return
     if version == 2 and "fumaris_liquid_display_radius_factor" not in obj:
         # The untouched instanced-sphere graph of 0.2.8 and earlier becomes the
@@ -202,8 +207,8 @@ def _refresh_whitewater_nodes(obj, radius):
         nodes = _canonical_particle_graph(group, True)
         if nodes is not None:
             current = float(nodes["GeometryNodeMeshIcoSphere"].inputs["Radius"].default_value)
-            if (abs(float(nodes["GeometryNodeMeshToPoints"].inputs["Radius"].default_value) - current) <= 1e-7 and
-                    abs(current - float(obj.get("fumaris_liquid_display_radius", current))) <= 1e-7):
+            if (_same(float(nodes["GeometryNodeMeshToPoints"].inputs["Radius"].default_value), current) and
+                    _same(current, float(obj.get("fumaris_liquid_display_radius", current)))):
                 _whitewater_nodes(obj, nodes["GeometryNodeSetMaterial"].inputs["Material"].default_value, radius, group)
                 return
     _refresh_particle_nodes(obj, radius, True)
@@ -277,7 +282,7 @@ def _refresh_particle_nodes(obj, radius, whitewater):
         return
     points, sphere = nodes["GeometryNodeMeshToPoints"], nodes["GeometryNodeMeshIcoSphere"]
     current_radius = float(sphere.inputs["Radius"].default_value)
-    if abs(float(points.inputs["Radius"].default_value) - current_radius) > 1e-7:
+    if not _same(float(points.inputs["Radius"].default_value), current_radius):
         return
     if obj.get("fumaris_liquid_display_version") != 2:
         # Rewire only the known v1 material/realization path. Preserve the
@@ -295,13 +300,13 @@ def _refresh_particle_nodes(obj, radius, whitewater):
         obj["fumaris_liquid_display_radius"] = current_radius
         return
     previous = float(obj.get("fumaris_liquid_display_radius", radius))
-    if abs(current_radius - previous) > 1e-7:
+    if not _same(current_radius, previous):
         return  # The user edited this radius directly in Geometry Nodes.
     target = radius * float(obj.get("fumaris_liquid_display_radius_factor", 1.0))
-    if abs(current_radius - target) > 1e-7:
+    if not _same(current_radius, target):
         points.inputs["Radius"].default_value = target
         sphere.inputs["Radius"].default_value = target
-    obj["fumaris_liquid_display_radius"] = target
+    obj["fumaris_liquid_display_radius"] = float(sphere.inputs["Radius"].default_value)
 
 
 MIST_MODIFIER, MIST_VOLUME = "Aquaris Mist", "Mist Volume"
@@ -345,6 +350,16 @@ def _mist_nodes(obj, material):
     modifier.node_group = group
 
 
+def _sync_layers(domain):
+    """A just-linked object is not in a view layer's object list, so it cannot be hidden yet."""
+    for scene in domain.users_scene:
+        for layer in scene.view_layers:
+            try:
+                layer.update()
+            except RuntimeError:
+                pass  # Not permitted in this context; visibility follows on the next update.
+
+
 def _ensure_mist(domain, collection, identity):
     """Optional soft volume from spray and foam; shares the whitewater points."""
     p = domain.fumaris_liquid
@@ -360,6 +375,7 @@ def _ensure_mist(domain, collection, identity):
         obj["fumaris_liquid_output"] = "mist"
         collection.objects.link(obj)
         p.mist_object = obj
+        _sync_layers(domain)
         material = bpy.data.materials.new(domain.name + " Mist")
         material.use_nodes = True
         nodes, links = material.node_tree.nodes, material.node_tree.links
@@ -371,6 +387,9 @@ def _ensure_mist(domain, collection, identity):
         output = next(node for node in nodes if node.bl_idname == "ShaderNodeOutputMaterial")
         links.new(scatter.outputs["Volume"], output.inputs["Volume"])
         _mist_nodes(obj, material)
+    elif not obj.users_collection:
+        collection.objects.link(obj)
+        _sync_layers(domain)
     if obj.data is not whitewater.data:
         obj.data = whitewater.data
     modifier = obj.modifiers.get(MIST_MODIFIER)
@@ -380,13 +399,16 @@ def _ensure_mist(domain, collection, identity):
     if volume is not None and volume.bl_idname == "GeometryNodePointsToVolume" and p.whitewater_mist > 0:
         reach = p.particle_radius * p.whitewater_mist_radius
         for name, value in (("Density", p.whitewater_mist), ("Radius", reach), ("Voxel Size", reach / 3)):
-            if abs(volume.inputs[name].default_value - value) > 1e-7:
+            if not _same(volume.inputs[name].default_value, value):
                 volume.inputs[name].default_value = value
 
 
 def refresh_look(domain):
     """Apply whitewater size and mist settings to existing outputs without reloading a frame."""
     p = domain.fumaris_liquid
+    if not p.domain_id:
+        return
+    ensure_identity(domain)  # A duplicated domain must not restyle or extend the original's outputs.
     if p.output_collection is None or p.whitewater_object is None or p.whitewater_object.get("fumaris_liquid_owner") != p.domain_id:
         return
     _refresh_whitewater_nodes(p.whitewater_object, p.particle_radius * p.whitewater_size)
@@ -407,6 +429,9 @@ def ensure_outputs(scene, domain):
     for prop_name, label in (("surface_object", "Surface"), ("whitewater_object", "Whitewater"), ("particle_object", "Particles")):
         obj = getattr(p, prop_name)
         if obj is not None and obj.type == "MESH" and obj.get("fumaris_liquid_owner") == identity:
+            if not obj.users_collection:
+                # Deleted in the viewport: the pointer kept it alive but nothing shows it.
+                collection.objects.link(obj)
             if label == "Whitewater":
                 _refresh_whitewater_nodes(obj, p.particle_radius * p.whitewater_size)
             elif label != "Surface":
