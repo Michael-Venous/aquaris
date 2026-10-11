@@ -45,6 +45,7 @@ class Session:
         self._cache_release_error = None
         self.stopper = None
         self.phase = "STARTING"
+        self._prepared = None
         self.paused = False
         self.stopping = False
         self.error = None
@@ -112,6 +113,12 @@ class Session:
                 raise RuntimeError("Cache cleanup failed; Session ownership retained") from exc
 
     def _request_frame(self):
+        header, payload, update = self._prepared or self._export_frame()
+        self._prepared = None
+        self.phase = "FRAME"
+        self._submit(self._step, header, payload, update, work=True)
+
+    def _export_frame(self):
         started = time.perf_counter()
         p = self.domain.fumaris_liquid
         self.scene.frame_set(self.frame)
@@ -126,8 +133,7 @@ class Session:
         settings = exporters.settings(self.scene, self.domain)
         update = settings if settings != self.last_settings else None
         self.last_settings = settings
-        self.phase = "FRAME"
-        self._submit(self._step, header, payload, update, work=True)
+        return header, payload, update
 
     def _step(self, header, payload, update):
         started = time.perf_counter()
@@ -177,6 +183,16 @@ class Session:
 
     def poll(self):
         if self.future is not None and not self.future.done():
+            if self.phase == "STARTING" and self._prepared is None and not self.stopping:
+                # The solver is starting on its thread; sample the scene for the
+                # first frame meanwhile instead of after it.
+                try:
+                    self._prepared = self._export_frame()
+                except Exception as exc:
+                    if self.error is None:
+                        self.error = str(exc)
+                    self.domain.fumaris_liquid.last_error = self.error
+                    self.request_stop()
             return True
         if self.future is not None:
             try:
