@@ -216,6 +216,20 @@ objects. It verifies procedural/image masks, unrealized mesh instances and
 origins, and inherited instance velocity. No Python OpenVDB library is required.
 
 
+## Splash detail and motion blur
+
+**Droplet Size** (Surface and Display) scales detached droplets of roughly one
+to three particles in the surface mesh. At 1 each keeps its particle's volume,
+which makes fine splashes look like beads; lower values (0.3–0.5) draw them as
+finer spray. The simulation is unaffected, and connected liquid is never scaled.
+
+**Surface Motion Vectors** stores a velocity for every surface vertex,
+interpolated from nearby particles, as the mesh's `velocity` point attribute.
+With **Render > Motion Blur** enabled Cycles then blurs the liquid along its
+motion even though the mesh topology changes every frame. It adds about a third
+to the cache size. Surfaces rebuilt later from a stopped preview carry no
+vectors.
+
 ## Interactive performance
 
 Use **Surface and Display > Display > GPU Surface** for fast iteration. It is

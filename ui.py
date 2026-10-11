@@ -186,6 +186,7 @@ def _draw(layout, context):
             structural.prop(p, "max_mesh_cells")
             structural.prop(p, "mesh_quality")
             structural.prop(p, "droplet_scale")
+            structural.prop(p, "surface_smoothing")
             structural.prop(p, "surface_velocity")
             box.prop(p, "display")
             if p.display == "PREVIEW":

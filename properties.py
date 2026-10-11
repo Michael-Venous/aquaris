@@ -82,6 +82,9 @@ class LiquidProperties(bpy.types.PropertyGroup):
     droplet_scale: FloatProperty(name="Droplet Size", default=1, min=0.05, max=1, subtype="FACTOR",
                                  description="Size of detached droplets of one to three particles in the surface mesh. "
                                              "1 keeps their particle volume; smaller values draw splashes as finer spray")
+    surface_smoothing: FloatProperty(name="Surface Smoothing", default=0, min=0, max=1, subtype="FACTOR",
+                                     description="Extra filtering of the surface mesh that removes particle-scale dimples "
+                                                 "while restoring each body's volume; costs meshing time and softens fine detail")
     surface_velocity: BoolProperty(name="Surface Motion Vectors", default=True,
                                    description="Store a velocity for every surface vertex so renders can motion-blur "
                                                "the liquid; increases cache size by about a third")

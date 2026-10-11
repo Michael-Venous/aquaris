@@ -52,7 +52,10 @@ def settings(scene, domain):
         "viscosity_tolerance": p.viscosity_tolerance,
         "boundary_viscosity": p.boundary_viscosity,
         "surface_tension": p.surface_tension,
-        "pressure_speed_gain": p.pressure_speed_gain / scale,
+        # Stated for Earth gravity; stronger gravity raises it in proportion so
+        # ordinary gravity-driven flow is never capped. Zero gravity keeps it.
+        "pressure_speed_gain": min(1e6, p.pressure_speed_gain / scale *
+                                   max(1.0, math.sqrt(sum(v * v for v in p.gravity)) / 9.81)),
         "max_particles": p.max_particles,
         "max_whitewater": p.max_whitewater,
         "max_boundary": p.max_boundary,
@@ -70,6 +73,7 @@ def settings(scene, domain):
         "mesh_cell_size": p.mesh_cell_size,
         "mesh_quality": p.mesh_quality,
         "droplet_scale": p.droplet_scale,
+        "surface_smoothing": p.surface_smoothing,
         "surface_velocity": p.surface_velocity,
         "max_mesh_cells": p.max_mesh_cells,
     }
@@ -516,8 +520,8 @@ class SceneExporter:
             weight_parts = [weights[np.all(weights >= 0, axis=1)]]
             for first, second in ((0, 1), (1, 2), (2, 0)):
                 segments = max(1, math.ceil(np.linalg.norm(world[triangle[first]] - world[triangle[second]]) / spacing))
-                if segments > 200000:
-                    raise RuntimeError(f"{obj.name}: collider edge sampling exceeds 200,000 points; raise radius")
+                if segments > self.domain.fumaris_liquid.max_boundary:
+                    raise RuntimeError(f"{obj.name}: collider edge sampling exceeds the collider sample budget; raise the radius or the budget")
                 fractions = np.linspace(0, 1, segments + 1)
                 edge_weights = np.zeros((segments + 1, 3))
                 edge_weights[:, first], edge_weights[:, second] = 1 - fractions, fractions
@@ -745,7 +749,11 @@ class SceneExporter:
         if reuse:
             del arrays['boundary_positions'], arrays['boundary_velocities']
         blocks, payload = pack_blocks(arrays)
+        fps = self.scene.render.fps / max(self.scene.render.fps_base, 1e-8)
         return {"frame": int(frame), "dt": float(dt), "blocks": blocks,
+                # Renderers displace by velocity / fps; a time-scaled simulation
+                # moves by velocity * dt, so stored motion vectors are rescaled.
+                "motion_scale": float(dt * fps),
                 "emission_batches": emission_batches,
                 "emission_clipped": excluded_count,
                 "reuse_boundaries": reuse,
