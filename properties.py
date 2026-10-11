@@ -79,6 +79,9 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time"),
         ("SMOOTH", "Smooth", "Anisotropic reconstruction reduces particle-scale bumps; slower and can join narrow gaps"),
     ], default="FINAL")
+    droplet_scale: FloatProperty(name="Droplet Size", default=1, min=0.05, max=1, subtype="FACTOR",
+                                 description="Size of detached droplets of one to three particles in the surface mesh. "
+                                             "1 keeps their particle volume; smaller values draw splashes as finer spray")
     speed: FloatProperty(name="Simulation Speed", default=1, min=0.01, max=10)
     record_preview: BoolProperty(name="Record Preview", default=False,
                                  description="Write each simulated frame into the selected cache slot")

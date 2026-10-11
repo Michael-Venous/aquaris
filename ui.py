@@ -185,6 +185,7 @@ def _draw(layout, context):
             structural.prop(p, "mesh_cell_size")
             structural.prop(p, "max_mesh_cells")
             structural.prop(p, "mesh_quality")
+            structural.prop(p, "droplet_scale")
             box.prop(p, "display")
             if p.display == "PREVIEW":
                 if hasattr(p, "preview_quality"):

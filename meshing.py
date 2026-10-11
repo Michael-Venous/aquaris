@@ -143,7 +143,8 @@ def request(scene, domain, header, payload):
     p = domain.fumaris_liquid
     settings = {'particle_radius': header.get('particle_radius', p.particle_radius),
                 'mesh_cell_size': p.mesh_cell_size, 'max_mesh_cells': p.max_mesh_cells,
-                'mesh_quality': getattr(p, 'mesh_quality', 'FAST')}
+                'mesh_quality': getattr(p, 'mesh_quality', 'FAST'),
+                'droplet_scale': getattr(p, 'droplet_scale', 1.0)}
     positions = np.array(display.block(header, payload, 'positions'))
     intent = _Intent(scene, domain, header, payload, display._last_outputs.get(key), positions, settings)
     # Preflight above does not cancel healthy work. New intent owns no child.

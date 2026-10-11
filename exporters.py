@@ -69,6 +69,7 @@ def settings(scene, domain):
         "bounds_max": list(p.bounds_max),
         "mesh_cell_size": p.mesh_cell_size,
         "mesh_quality": p.mesh_quality,
+        "droplet_scale": p.droplet_scale,
         "max_mesh_cells": p.max_mesh_cells,
     }
 
