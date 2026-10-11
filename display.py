@@ -36,6 +36,32 @@ def _material(name, color, roughness, transmission=0.0):
     return material
 
 
+def _liquid_material(name, viscous):
+    """Clear refractive liquid whose colour comes from depth, not from its surface.
+
+    A tinted Base Color on a transmissive surface darkens every ray equally and
+    reads as coloured glass. Volume absorption instead leaves thin sheets and
+    droplets clear and deep water saturated, as real liquid does.
+    """
+    material = bpy.data.materials.new(name)
+    material.use_nodes = True
+    tint, density, ior = ((0.80, 0.25, 0.03), 8.0, 1.47) if viscous else ((0.55, 0.85, 0.95), 0.35, 1.333)
+    material.diffuse_color = (*tint, 1)
+    nodes, links = material.node_tree.nodes, material.node_tree.links
+    shader = nodes.get("Principled BSDF")
+    shader.inputs["Base Color"].default_value = (1, 1, 1, 1)
+    shader.inputs["Roughness"].default_value = 0.0
+    shader.inputs["Transmission Weight"].default_value = 1.0
+    shader.inputs["IOR"].default_value = ior
+    absorption = nodes.new("ShaderNodeVolumeAbsorption")
+    absorption.location = (shader.location.x, shader.location.y - 720)
+    absorption.inputs["Color"].default_value = (*tint, 1)
+    absorption.inputs["Density"].default_value = density
+    output = next(node for node in nodes if node.bl_idname == "ShaderNodeOutputMaterial")
+    links.new(absorption.outputs["Volume"], output.inputs["Volume"])
+    return material
+
+
 def _particle_nodes(obj, material, radius, whitewater=False):
     group = bpy.data.node_groups.new(obj.name + " Display", "GeometryNodeTree")
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
@@ -209,9 +235,12 @@ def ensure_outputs(scene, domain):
         collection.objects.link(obj)
         setattr(p, prop_name, obj)
         if label == "Surface":
-            material = _material(domain.name + " Water", (0.025, 0.19, 0.28), 0.12, 1)
+            viscous = p.kinematic_viscosity > 0
+            material = _liquid_material(domain.name + (" Syrup" if viscous else " Water"), viscous)
         elif label == "Whitewater":
-            material = _material(domain.name + " Whitewater", (0.96, 0.98, 1), 0.35)
+            material = _material(domain.name + " Whitewater", (0.96, 0.98, 1), 0.6)
+            # Foam scatters light inside itself rather than looking like painted beads.
+            material.node_tree.nodes["Principled BSDF"].inputs["Subsurface Weight"].default_value = 0.4
             _particle_nodes(obj, material, p.particle_radius, True)
         else:
             material = _material(domain.name + " Diagnostic Particles", (0.03, 0.4, 0.8), 0.2)
