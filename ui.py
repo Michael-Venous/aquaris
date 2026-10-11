@@ -169,6 +169,14 @@ def _draw(layout, context):
             for name in ("whitewater_generation", "whitewater_energy_min", "whitewater_energy_max",
                          "whitewater_lifetime_min", "whitewater_lifetime_max", "whitewater_buoyancy", "whitewater_drag"):
                 foam.prop(p, name)
+            look = box.column(align=True)
+            look.enabled = p.whitewater
+            look.label(text="Appearance (no rebake needed)")
+            look.prop(p, "whitewater_size")
+            look.prop(p, "whitewater_mist")
+            mist = look.row()
+            mist.enabled = p.whitewater_mist > 0
+            mist.prop(p, "whitewater_mist_radius")
         box = _section(layout, "budgets", "Allocation and Budgets", closed=True)
         if box is not None:
             box.enabled = running is None

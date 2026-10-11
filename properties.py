@@ -12,6 +12,12 @@ def _display_update(self, context):
         display.refresh_mode(context.scene, self.id_data)
 
 
+def _look_update(self, context):
+    if self.role == "DOMAIN":
+        from . import display
+        display.refresh_look(self.id_data)
+
+
 class LiquidProperties(bpy.types.PropertyGroup):
     role: EnumProperty(name="Liquid Role", items=[
         ("NONE", "None", "Not a liquid participant"),
@@ -32,6 +38,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
     surface_object: PointerProperty(type=bpy.types.Object)
     whitewater_object: PointerProperty(type=bpy.types.Object)
     particle_object: PointerProperty(type=bpy.types.Object)
+    mist_object: PointerProperty(type=bpy.types.Object)
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005,
                                   max=2, subtype="DISTANCE",
                                   description="World-space sampling and solver radius; restart to change")
@@ -62,6 +69,12 @@ class LiquidProperties(bpy.types.PropertyGroup):
                               description="Collider surface samples accepted per frame; finer particles need more")
     whitewater: BoolProperty(name="Foam, Spray and Bubbles", default=True, update=_display_update)
     whitewater_generation: FloatProperty(name="Generation", default=1, min=0, max=10)
+    whitewater_size: FloatProperty(name="Particle Size", default=2, min=0.1, max=20, update=_look_update,
+                                   description="Rendered size of spray, foam and bubble particles. 1 is the size used before Aquaris 0.2.8; larger particles read as denser foam")
+    whitewater_mist: FloatProperty(name="Mist", default=0, min=0, max=100, update=_look_update,
+                                   description="Density of a soft scattering volume built from spray and foam, for falls and heavy spray. 0 disables it. Needs Light Paths > Volume bounces above zero in Cycles to render white")
+    whitewater_mist_radius: FloatProperty(name="Mist Radius", default=4, min=1, max=20, update=_look_update,
+                                          description="Reach of each whitewater particle's mist, in liquid particle radii")
     whitewater_energy_min: FloatProperty(name="Minimum Energy", default=0.5, min=0, max=10000,
                                          description="Kinetic energy per unit mass in square metres per square second")
     whitewater_energy_max: FloatProperty(name="Maximum Energy", default=10, min=0, max=10000)

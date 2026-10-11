@@ -131,7 +131,17 @@ finer particle radii need a larger budget and more GPU memory.
 The **Surface** object is a normal Blender mesh with an editable water material.
 **Whitewater** stores `velocity` and integer `whitewater_type` attributes:
 1 spray, 2 foam, 3 bubble. Its editable Geometry Nodes graph displays small
-spheres. **Particles** is a diagnostic display with a velocity attribute.
+spheres. **Particle Size** scales those spheres; the default of 2 reads as
+denser foam than the size used before 0.2.8 (set 1 for the old look).
+**Mist** adds a soft white scattering volume built from spray and foam, for
+falls and heavy spray: 2-4 with **Mist Radius** 4 veils a waterfall without
+hiding it, while much higher values turn into cotton-like blobs around single
+particles. Mist is a separate **Mist** object that shares the whitewater
+points, is created the first time Mist is above zero, appears in Surface
+display and in renders, and needs Cycles **Light Paths > Volume** bounces above
+zero (8 or more) to render white rather than grey. Both settings change the
+look of an existing bake at once. **Particles** is a diagnostic display with a
+velocity attribute.
 Switching **Display** changes surface/particle visibility. Whitewater remains
 independently controlled. All output objects are tagged with their domain owner;
 changing another domain does not rewrite them.

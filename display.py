@@ -21,6 +21,7 @@ def ensure_identity(domain):
         p.surface_object = None
         p.whitewater_object = None
         p.particle_object = None
+        p.mist_object = None
     return p.domain_id
 
 
@@ -211,6 +212,96 @@ def _refresh_particle_nodes(obj, radius, whitewater):
     obj["fumaris_liquid_display_radius"] = target
 
 
+MIST_MODIFIER, MIST_VOLUME = "Aquaris Mist", "Mist Volume"
+
+
+def _mist_nodes(obj, material):
+    group = bpy.data.node_groups.new(obj.name + " Display", "GeometryNodeTree")
+    group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    nodes, links = group.nodes, group.links
+    source, output = nodes.new("NodeGroupInput"), nodes.new("NodeGroupOutput")
+    points = nodes.new("GeometryNodeMeshToPoints")
+    points.mode = "VERTICES"
+    # Bubbles are under water; only spray and foam hang in the air.
+    kind = nodes.new("GeometryNodeInputNamedAttribute")
+    kind.data_type = "INT"
+    kind.inputs["Name"].default_value = "whitewater_type"
+    kind.label = "1 spray / 2 foam / 3 bubble"
+    bubble = nodes.new("FunctionNodeCompare")
+    bubble.data_type, bubble.operation = "INT", "EQUAL"
+    sockets = {socket.name: socket for socket in bubble.inputs if socket.enabled}
+    sockets["B"].default_value = 3
+    airborne = nodes.new("GeometryNodeDeleteGeometry")
+    airborne.domain = "POINT"
+    volume = nodes.new("GeometryNodePointsToVolume")
+    volume.name = MIST_VOLUME
+    volume.inputs["Resolution Mode"].default_value = "Size"
+    shade = nodes.new("GeometryNodeSetMaterial")
+    shade.inputs["Material"].default_value = material
+    for index, node in enumerate((source, points, airborne, volume, shade, output)):
+        node.location = (-600 + 220 * index, 100)
+    kind.location, bubble.location = (-600, -160), (-380, -160)
+    links.new(source.outputs["Geometry"], points.inputs["Mesh"])
+    links.new(kind.outputs["Attribute"], sockets["A"])
+    links.new(bubble.outputs["Result"], airborne.inputs["Selection"])
+    links.new(points.outputs["Points"], airborne.inputs["Geometry"])
+    links.new(airborne.outputs["Geometry"], volume.inputs["Points"])
+    links.new(volume.outputs["Volume"], shade.inputs["Geometry"])
+    links.new(shade.outputs["Geometry"], output.inputs["Geometry"])
+    modifier = obj.modifiers.new(MIST_MODIFIER, "NODES")
+    modifier.node_group = group
+
+
+def _ensure_mist(domain, collection, identity):
+    """Optional soft volume from spray and foam; shares the whitewater points."""
+    p = domain.fumaris_liquid
+    whitewater = p.whitewater_object
+    if whitewater is None or whitewater.get("fumaris_liquid_owner") != identity:
+        return
+    obj = p.mist_object
+    if obj is None or obj.type != "MESH" or obj.get("fumaris_liquid_owner") != identity:
+        if p.whitewater_mist <= 0:
+            return  # Nothing is created until mist is asked for.
+        obj = bpy.data.objects.new(domain.name + " Mist", whitewater.data)
+        obj["fumaris_liquid_owner"] = identity
+        obj["fumaris_liquid_output"] = "mist"
+        collection.objects.link(obj)
+        p.mist_object = obj
+        material = bpy.data.materials.new(domain.name + " Mist")
+        material.use_nodes = True
+        nodes, links = material.node_tree.nodes, material.node_tree.links
+        nodes.remove(nodes["Principled BSDF"])
+        scatter = nodes.new("ShaderNodeVolumePrincipled")
+        scatter.inputs["Color"].default_value = (1, 1, 1, 1)
+        scatter.inputs["Density"].default_value = 1.0
+        scatter.inputs["Anisotropy"].default_value = 0.6
+        output = next(node for node in nodes if node.bl_idname == "ShaderNodeOutputMaterial")
+        links.new(scatter.outputs["Volume"], output.inputs["Volume"])
+        _mist_nodes(obj, material)
+    if obj.data is not whitewater.data:
+        obj.data = whitewater.data
+    modifier = obj.modifiers.get(MIST_MODIFIER)
+    # A removed, replaced or shared graph is an intentional customization.
+    volume = (modifier.node_group.nodes.get(MIST_VOLUME) if modifier is not None and modifier.type == "NODES" and
+              modifier.node_group is not None and modifier.node_group.users == 1 else None)
+    if volume is not None and volume.bl_idname == "GeometryNodePointsToVolume" and p.whitewater_mist > 0:
+        reach = p.particle_radius * p.whitewater_mist_radius
+        for name, value in (("Density", p.whitewater_mist), ("Radius", reach), ("Voxel Size", reach / 3)):
+            if abs(volume.inputs[name].default_value - value) > 1e-7:
+                volume.inputs[name].default_value = value
+
+
+def refresh_look(domain):
+    """Apply whitewater size and mist settings to existing outputs without reloading a frame."""
+    p = domain.fumaris_liquid
+    if p.output_collection is None or p.whitewater_object is None or p.whitewater_object.get("fumaris_liquid_owner") != p.domain_id:
+        return
+    _refresh_particle_nodes(p.whitewater_object, p.particle_radius * p.whitewater_size, True)
+    _ensure_mist(domain, p.output_collection, p.domain_id)
+    update_visibility(domain)
+
+
 def ensure_outputs(scene, domain):
     identity = ensure_identity(domain)
     p = domain.fumaris_liquid
@@ -225,7 +316,7 @@ def ensure_outputs(scene, domain):
         obj = getattr(p, prop_name)
         if obj is not None and obj.type == "MESH" and obj.get("fumaris_liquid_owner") == identity:
             if label != "Surface":
-                _refresh_particle_nodes(obj, p.particle_radius if label == "Whitewater" else p.particle_radius*.75,
+                _refresh_particle_nodes(obj, p.particle_radius * p.whitewater_size if label == "Whitewater" else p.particle_radius*.75,
                                         label == "Whitewater")
             continue
         mesh = bpy.data.meshes.new(domain.name + " " + label)
@@ -241,11 +332,12 @@ def ensure_outputs(scene, domain):
             material = _material(domain.name + " Whitewater", (0.96, 0.98, 1), 0.6)
             # Foam scatters light inside itself rather than looking like painted beads.
             material.node_tree.nodes["Principled BSDF"].inputs["Subsurface Weight"].default_value = 0.4
-            _particle_nodes(obj, material, p.particle_radius, True)
+            _particle_nodes(obj, material, p.particle_radius * p.whitewater_size, True)
         else:
             material = _material(domain.name + " Diagnostic Particles", (0.03, 0.4, 0.8), 0.2)
             _particle_nodes(obj, material, p.particle_radius * 0.75)
         mesh.materials.append(material)
+    _ensure_mist(domain, collection, identity)
     return p
 
 
@@ -340,14 +432,17 @@ def update_visibility(domain):
     p = domain.fumaris_liquid
     for obj, hidden in ((p.surface_object, p.display != "SURFACE"),
                         (p.particle_object, p.display != "PARTICLES"),
-                        (p.whitewater_object, not p.whitewater or p.display == "PREVIEW")):
+                        (p.whitewater_object, not p.whitewater or p.display == "PREVIEW"),
+                        # Shares the whitewater points, so it is theirs to clear.
+                        (p.mist_object, not p.whitewater or p.whitewater_mist <= 0 or p.display != "SURFACE")):
         if obj is not None:
             for scene in domain.users_scene:
                 for layer in scene.view_layers:
                     if obj.name in layer.objects:
                         obj.hide_set(hidden, view_layer=layer)
             # Viewport-only preview must not hide recorded surface output in a render.
-            obj.hide_render = (not p.whitewater if obj == p.whitewater_object else
+            obj.hide_render = (not p.whitewater or p.whitewater_mist <= 0 if obj == p.mist_object else
+                               not p.whitewater if obj == p.whitewater_object else
                                p.display == "PARTICLES" if obj == p.surface_object else p.display != "PARTICLES")
 
 
