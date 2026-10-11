@@ -470,27 +470,44 @@ def block(header, payload, name, components=3, integer=False):
     return result.reshape((-1, components)) if components > 1 else result
 
 
+def _set_positions(mesh, positions):
+    # The attribute arrays are written with one copy. vertices.foreach_set("co")
+    # and loops.foreach_set("vertex_index") go through per-element property
+    # access: 165 ms and 425 ms against 1 ms and 2 ms for a 3.7M-triangle frame.
+    values = np.ascontiguousarray(positions, dtype=np.float32).ravel()
+    attribute = mesh.attributes.get("position")
+    if attribute is not None and len(attribute.data) * 3 == len(values):
+        attribute.data.foreach_set("vector", values)
+    else:
+        mesh.vertices.foreach_set("co", values)
+
+
 def _mesh(mesh, positions, triangles=None):
     # Point output has stable topology in most frames. Retain its attributes
     # and allocation instead of destroying/recreating every Blender element.
     if triangles is None and len(mesh.vertices) == len(positions) and not mesh.polygons:
         if len(positions):
-            mesh.vertices.foreach_set("co", np.ascontiguousarray(positions, dtype=np.float32).ravel())
+            _set_positions(mesh, positions)
         mesh.update()
         return
     mesh.clear_geometry()
     mesh.vertices.add(len(positions))
     if len(positions):
-        mesh.vertices.foreach_set("co", np.ascontiguousarray(positions, dtype=np.float32).ravel())
+        _set_positions(mesh, positions)
     if triangles is not None and len(triangles):
         if int(triangles.max()) >= len(positions):
             raise RuntimeError("Native surface triangles reference missing vertices")
         mesh.loops.add(len(triangles) * 3)
-        mesh.loops.foreach_set("vertex_index", np.asarray(triangles, dtype=np.int32).ravel())
+        corners = np.asarray(triangles, dtype=np.int32).ravel()
+        attribute = mesh.attributes.get(".corner_vert")
+        if attribute is not None and len(attribute.data) == len(corners):
+            attribute.data.foreach_set("value", corners)
+        else:
+            mesh.loops.foreach_set("vertex_index", corners)
         mesh.polygons.add(len(triangles))
+        # Face sizes follow from the offsets, and faces are smooth unless a
+        # sharp_face attribute says otherwise, so neither is written.
         mesh.polygons.foreach_set("loop_start", np.arange(len(triangles), dtype=np.int32) * 3)
-        mesh.polygons.foreach_set("loop_total", np.full(len(triangles), 3, dtype=np.int32))
-        mesh.polygons.foreach_set("use_smooth", np.ones(len(triangles), dtype=bool))
     mesh.update()
 
 
