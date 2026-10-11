@@ -149,7 +149,8 @@ remain available for playback; because a run needs an empty slot, use **Delete
 Slot** (or choose a new slot) before simulating there again. The lock is kept,
 and the slot stays locked, whenever that cannot be established: a lock written
 by another computer or from inside a different sandbox (for example a Flatpak
-Blender), by an Aquaris version before 0.2.2, or on Windows and macOS. In those
+Blender), on a network or other non-local filesystem, by an Aquaris version
+before 0.2.2, or on Windows and macOS. In those
 cases choose a fresh slot, or remove `.writer.lock` from the slot folder yourself
 after confirming no simulation is using it.
 

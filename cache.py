@@ -33,11 +33,47 @@ def _machine_id():
     return _read_text("/etc/machine-id")
 
 
-def _pid_namespace():
+def _namespace(kind):
+    """Identity of this process's namespace, only where /proc describes this process."""
     try:
-        return os.readlink("/proc/self/ns/pid") or None
+        if os.readlink("/proc/self") != str(os.getpid()):
+            return None  # /proc belongs to another PID namespace.
+        return os.readlink("/proc/self/ns/" + kind) or None
     except OSError:
         return None
+
+
+def _pid_namespace():
+    return _namespace("pid")
+
+
+def _time_namespace():
+    # Process start times are reported relative to the reader's time namespace.
+    return _namespace("time")
+
+
+# Recovery relies on exclusive create, rename and directory locks behaving as
+# on a local disk, and on one machine id per machine. Anything else stays locked.
+_LOCAL_FILESYSTEMS = frozenset({"ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "zfs", "bcachefs", "jfs",
+                                "reiserfs", "tmpfs", "ramfs", "overlay", "vfat", "exfat", "ntfs", "ntfs3",
+                                "fuseblk", "ecryptfs"})
+
+
+def _on_local_filesystem(path):
+    try:
+        target = Path(os.path.realpath(path)).parts
+        best, kind = -1, None
+        with open("/proc/self/mountinfo", encoding="utf-8", errors="surrogateescape") as mounts:
+            for line in mounts:
+                fields = line.split()
+                separator = fields.index("-")
+                point = Path(re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), fields[4])).parts
+                # The last matching line wins among equal mount points: it is mounted on top.
+                if len(point) >= best and target[:len(point)] == point:
+                    best, kind = len(point), fields[separator + 1]
+        return kind in _LOCAL_FILESYSTEMS
+    except (OSError, ValueError, IndexError):
+        return False
 
 
 def _process_start(pid):
@@ -52,15 +88,15 @@ def _process_start(pid):
 def _owner_record():
     pid = os.getpid()
     return json.dumps({"pid": pid, "host": socket.gethostname(), "machine": _machine_id(),
-                       "ns": _pid_namespace(), "boot": _boot_id(),
+                       "ns": _pid_namespace(), "time": _time_namespace(), "boot": _boot_id(),
                        "start": _process_start(pid)}).encode("ascii")
 
 
 def _owner_gone(data):
     """True only when the recorded writer provably no longer exists.
 
-    Linux only. The record must name this machine, this PID namespace and a
-    known boot; every doubt (another or unknown machine or sandbox, an
+    Linux only. The record must name this machine, this PID and time namespace
+    and a known boot; every doubt (another or unknown machine or sandbox, an
     unreadable or pre-0.2.2 record, a live process with the same PID and an
     unknown start time) keeps the slot locked.
     """
@@ -79,6 +115,9 @@ def _owner_gone(data):
     for key in ("host", "machine", "ns"):
         if not isinstance(record.get(key), str) or not here[key] or record[key] != here[key]:
             return False
+    # Absent on kernels without time namespaces; then it must be absent on both sides.
+    if "time" not in record or record["time"] != _time_namespace():
+        return False
     boot, start = record.get("boot"), record.get("start")
     if not isinstance(boot, str) or not boot or not here["boot"]:
         return False
@@ -148,23 +187,32 @@ class Cache:
             self._atomic_bytes(marker, json.dumps(self._metadata()).encode("utf-8"))
         self._lock_release = None
         self._lock_fd = self._create_lock("Cache slot is locked by another simulation; choose a different slot")
-        os.write(self._lock_fd, _owner_record())
+        self._write_owner(self._lock_fd)
         return self
+
+    @staticmethod
+    def _write_owner(fd):
+        # Durable before any frame: an empty lock can never be recovered.
+        os.write(fd, _owner_record())
+        os.fsync(fd)
 
     def _create_lock(self, refusal):
         """Exclusively create the writer lock, first clearing a crashed writer's."""
         lock = self.path / LOCK
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         try:
-            return os.open(lock, flags, 0o600)
-        except FileExistsError as exc:
-            if not self._remove_crashed_lock():
+            try:
+                return os.open(lock, flags, 0o600)
+            except FileExistsError as exc:
+                if not self._remove_crashed_lock():
+                    raise RuntimeError(refusal) from exc
+            try:
+                # Still exclusive: a normal acquirer may have won since the removal.
+                return os.open(lock, flags, 0o600)
+            except FileExistsError as exc:
                 raise RuntimeError(refusal) from exc
-        try:
-            # Still exclusive: a normal acquirer may have won since the removal.
-            return os.open(lock, flags, 0o600)
-        except FileExistsError as exc:
-            raise RuntimeError(refusal) from exc
+        except FileNotFoundError as exc:
+            raise RuntimeError("Cache slot was removed while it was being opened; try again") from exc
 
     def _remove_crashed_lock(self):
         """Remove the writer lock of a process that no longer exists.
@@ -178,13 +226,16 @@ class Cache:
             import fcntl
         except ImportError:
             return False
-        lock = self.path / LOCK
         guard = fd = None
         try:
-            guard = os.open(self.path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            if not _on_local_filesystem(self.path):
+                return False
+            guard = os.open(self.path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Everything below names the lock inside the guarded directory
+            # itself, not whatever the slot path points to later.
             try:
-                fd = os.open(lock, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+                fd = os.open(LOCK, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=guard)
             except FileNotFoundError:
                 return True
             examined = os.fstat(fd)
@@ -193,14 +244,14 @@ class Cache:
             # The examined descriptor stays open so its inode cannot be reused
             # by a new lock before the identity comparison and unlink.
             try:
-                current = os.lstat(lock)
+                current = os.lstat(LOCK, dir_fd=guard)
             except FileNotFoundError:
                 return True
             if (current.st_dev, current.st_ino) != (examined.st_dev, examined.st_ino):
                 return False
-            os.unlink(lock)
+            os.unlink(LOCK, dir_fd=guard)
             return True
-        except (OSError, OverflowError):
+        except (OSError, OverflowError, AttributeError):
             return False
         finally:
             for descriptor in (fd, guard):
@@ -313,11 +364,34 @@ class Cache:
                 pass
         return sorted(frames)
 
+    def _sweep_deleted(self):
+        """Finish removals of this domain's slots that an earlier delete left behind."""
+        domain = self.path.parent
+        try:
+            names = [entry.name for entry in domain.iterdir()]
+        except OSError:
+            return
+        for name in names:
+            doomed = domain / name
+            if not re.fullmatch(r"\.deleting-[0-9a-f]{32}", name) or doomed.is_symlink() or not doomed.is_dir():
+                continue
+            try:
+                stored = json.loads((doomed / MARKER).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            # The marker grants deletion authority, as for a live slot.
+            if isinstance(stored, dict) and stored.get("domain_id") == self.domain_id and stored.get("schema") == SCHEMA:
+                shutil.rmtree(doomed, ignore_errors=True)
+                if doomed.exists():
+                    raise RuntimeError("Cache slot removal is incomplete; remove " + str(doomed))
+
     def delete(self):
         if self._lock_release_started:
             raise RuntimeError("Cache lock retirement is incomplete; cannot delete cache")
         if self._lock_fd is not None:
             raise RuntimeError("Stop the simulation before deleting its cache")
+        self._check_path()
+        self._sweep_deleted()
         if not self.path.exists():
             return
         self._verify()
@@ -331,7 +405,7 @@ class Cache:
         try:
             try:
                 created = os.fstat(fd)
-                os.write(fd, _owner_record())
+                self._write_owner(fd)
             finally:
                 os.close(fd)
             doomed = self.path.with_name(".deleting-" + uuid.uuid4().hex)
@@ -344,7 +418,9 @@ class Cache:
             except OSError:
                 pass
             raise
-        shutil.rmtree(doomed)
+        shutil.rmtree(doomed, ignore_errors=True)
+        if doomed.exists():
+            raise RuntimeError("Cache slot removal is incomplete; remove " + str(doomed))
 
     def __enter__(self):
         return self.acquire()
