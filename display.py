@@ -117,6 +117,98 @@ def _particle_nodes(obj, material, radius, whitewater=False):
     obj["fumaris_liquid_display_radius"] = radius
 
 
+WHITEWATER_RADIUS = "Whitewater Radius"
+
+
+def _whitewater_nodes(obj, material, radius, group=None):
+    """Whitewater as a renderer point cloud.
+
+    Points render as true spheres and Cycles blurs them along their `velocity`
+    attribute, so spray in a fast fall streaks like the water around it;
+    instanced spheres stayed sharp dots.
+    """
+    if group is None:
+        group = bpy.data.node_groups.new(obj.name + " Display", "GeometryNodeTree")
+        group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+        group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+        modifier = obj.modifiers.new("Editable Particle Display", "NODES")
+        modifier.node_group = group
+    else:
+        group.nodes.clear()
+    nodes, links = group.nodes, group.links
+    source = nodes.new("NodeGroupInput")
+    source.location = (-600, 100)
+    points = nodes.new("GeometryNodeMeshToPoints")
+    points.mode = "VERTICES"
+    points.location = (-160, 100)
+    type_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    type_attr.data_type = "INT"
+    type_attr.inputs["Name"].default_value = "whitewater_type"
+    type_attr.label = "1 spray / 2 foam / 3 bubble"
+    type_attr.location = (-820, -160)
+    foam = nodes.new("ShaderNodeMath")
+    foam.operation = "COMPARE"
+    foam.inputs[1].default_value = 2
+    foam.inputs[2].default_value = 0.1
+    foam.location = (-600, -160)
+    scale = nodes.new("ShaderNodeMath")
+    scale.operation = "MULTIPLY_ADD"
+    scale.inputs[1].default_value = 0.08
+    scale.inputs[2].default_value = 0.10
+    scale.location = (-380, -160)
+    size = nodes.new("ShaderNodeMath")
+    size.operation = "MULTIPLY"
+    size.name = WHITEWATER_RADIUS
+    size.label = "x particle radius x Particle Size"
+    size.inputs[1].default_value = radius
+    size.location = (-380, -360)
+    shade = nodes.new("GeometryNodeSetMaterial")
+    shade.location = (60, 100)
+    shade.inputs["Material"].default_value = material
+    output = nodes.new("NodeGroupOutput")
+    output.location = (280, 100)
+    links.new(source.outputs["Geometry"], points.inputs["Mesh"])
+    links.new(type_attr.outputs["Attribute"], foam.inputs[0])
+    links.new(foam.outputs[0], scale.inputs[0])
+    links.new(scale.outputs[0], size.inputs[0])
+    links.new(size.outputs[0], points.inputs["Radius"])
+    links.new(points.outputs["Points"], shade.inputs["Geometry"])
+    links.new(shade.outputs["Geometry"], output.inputs["Geometry"])
+    obj["fumaris_liquid_display_version"] = 3
+    obj["fumaris_liquid_display_radius"] = radius
+
+
+def _refresh_whitewater_nodes(obj, radius):
+    modifier = next((value for value in obj.modifiers if value.type == "NODES" and
+                     value.name == "Editable Particle Display" and value.node_group), None)
+    if modifier is None or modifier.node_group.users > 1:
+        return
+    group = modifier.node_group
+    version = obj.get("fumaris_liquid_display_version")
+    if version == 3:
+        size = group.nodes.get(WHITEWATER_RADIUS)
+        if size is None or size.bl_idname != "ShaderNodeMath" or size.operation != "MULTIPLY":
+            return
+        current = float(size.inputs[1].default_value)
+        if abs(current - float(obj.get("fumaris_liquid_display_radius", radius))) > 1e-7:
+            return  # The user edited this radius directly in Geometry Nodes.
+        if abs(current - radius) > 1e-7:
+            size.inputs[1].default_value = radius
+        obj["fumaris_liquid_display_radius"] = radius
+        return
+    if version == 2 and "fumaris_liquid_display_radius_factor" not in obj:
+        # The untouched instanced-sphere graph of 0.2.8 and earlier becomes the
+        # point cloud in place; an edited one stays as its author left it.
+        nodes = _canonical_particle_graph(group, True)
+        if nodes is not None:
+            current = float(nodes["GeometryNodeMeshIcoSphere"].inputs["Radius"].default_value)
+            if (abs(float(nodes["GeometryNodeMeshToPoints"].inputs["Radius"].default_value) - current) <= 1e-7 and
+                    abs(current - float(obj.get("fumaris_liquid_display_radius", current))) <= 1e-7):
+                _whitewater_nodes(obj, nodes["GeometryNodeSetMaterial"].inputs["Material"].default_value, radius, group)
+                return
+    _refresh_particle_nodes(obj, radius, True)
+
+
 def _canonical_particle_graph(group, whitewater, legacy=False, scaled=True):
     """Recognize only our complete generated graph before changing saved nodes."""
     by_type = {}
@@ -297,7 +389,7 @@ def refresh_look(domain):
     p = domain.fumaris_liquid
     if p.output_collection is None or p.whitewater_object is None or p.whitewater_object.get("fumaris_liquid_owner") != p.domain_id:
         return
-    _refresh_particle_nodes(p.whitewater_object, p.particle_radius * p.whitewater_size, True)
+    _refresh_whitewater_nodes(p.whitewater_object, p.particle_radius * p.whitewater_size)
     _ensure_mist(domain, p.output_collection, p.domain_id)
     update_visibility(domain)
 
@@ -315,9 +407,10 @@ def ensure_outputs(scene, domain):
     for prop_name, label in (("surface_object", "Surface"), ("whitewater_object", "Whitewater"), ("particle_object", "Particles")):
         obj = getattr(p, prop_name)
         if obj is not None and obj.type == "MESH" and obj.get("fumaris_liquid_owner") == identity:
-            if label != "Surface":
-                _refresh_particle_nodes(obj, p.particle_radius * p.whitewater_size if label == "Whitewater" else p.particle_radius*.75,
-                                        label == "Whitewater")
+            if label == "Whitewater":
+                _refresh_whitewater_nodes(obj, p.particle_radius * p.whitewater_size)
+            elif label != "Surface":
+                _refresh_particle_nodes(obj, p.particle_radius*.75, False)
             continue
         mesh = bpy.data.meshes.new(domain.name + " " + label)
         obj = bpy.data.objects.new(mesh.name, mesh)
@@ -332,7 +425,7 @@ def ensure_outputs(scene, domain):
             material = _material(domain.name + " Whitewater", (0.96, 0.98, 1), 0.6)
             # Foam scatters light inside itself rather than looking like painted beads.
             material.node_tree.nodes["Principled BSDF"].inputs["Subsurface Weight"].default_value = 0.4
-            _particle_nodes(obj, material, p.particle_radius * p.whitewater_size, True)
+            _whitewater_nodes(obj, material, p.particle_radius * p.whitewater_size)
         else:
             material = _material(domain.name + " Diagnostic Particles", (0.03, 0.4, 0.8), 0.2)
             _particle_nodes(obj, material, p.particle_radius * 0.75)
