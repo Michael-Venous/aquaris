@@ -1,6 +1,7 @@
 """Process isolation for the native GPU runtime; no bpy access on worker threads."""
 from collections import deque
 import os
+import sys
 from pathlib import Path
 import subprocess
 import threading
@@ -36,6 +37,48 @@ def find_worker():
     raise RuntimeError("Nebula worker is missing. Build or install the Aquaris extension package.")
 
 
+def _private_directory(path):
+    """Create or accept a directory only this user can read; shared files are never trusted."""
+    try:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        stat = path.lstat()
+        if path.is_symlink() or (hasattr(os, "getuid") and (stat.st_uid != os.getuid() or stat.st_mode & 0o077)):
+            return None
+        return path
+    except OSError:
+        return None
+
+
+def _shader_cache_directory():
+    """Compiled shader variants, kept across reboots.
+
+    The temporary directory used before lost them at every restart, and each
+    grid layout then cost seconds of compilation at the first Preview again.
+    Entries are verified against their full source, so stale files are only
+    unused; the oldest are removed because the worker stops saving at 512.
+    """
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Aquaris"
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Caches" / "Aquaris"
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "aquaris"
+    identity = str(os.getuid()) if hasattr(os, "getuid") else "user"
+    for candidate in (base / "shaders", Path(tempfile.gettempdir()) / ("liquaris-shaders-" + identity)):
+        cache = _private_directory(candidate)
+        if cache is None:
+            continue
+        try:
+            entries = sorted((entry for entry in cache.iterdir() if entry.suffix == ".spv-cache"),
+                             key=lambda entry: entry.stat().st_mtime)
+            for entry in entries[:max(0, len(entries) - 384)]:
+                entry.unlink(missing_ok=True)
+        except OSError:
+            pass  # Pruning is best effort; caching stays optional.
+        return cache
+    return None
+
+
 class Bridge:
     def __init__(self, executable=None):
         self.executable = Path(executable) if executable else None
@@ -53,17 +96,9 @@ class Bridge:
         executable = (self.executable or find_worker()).resolve()
         environment = os.environ.copy()
         if "FUMARIS_LIQUID_SHADER_CACHE" not in environment:
-            # A per-user private directory avoids trusting shared temporary files.
-            identity = str(os.getuid()) if hasattr(os, "getuid") else "user"
-            cache = Path(tempfile.gettempdir()) / ("liquaris-shaders-" + identity)
-            try:
-                cache.mkdir(mode=0o700, exist_ok=True)
-                stat = cache.lstat()
-                if not cache.is_symlink() and (not hasattr(os, "getuid") or
-                        (stat.st_uid == os.getuid() and stat.st_mode & 0o077 == 0)):
-                    environment["FUMARIS_LIQUID_SHADER_CACHE"] = str(cache)
-            except OSError:
-                pass  # Shader caching is optional.
+            cache = _shader_cache_directory()
+            if cache is not None:
+                environment["FUMARIS_LIQUID_SHADER_CACHE"] = str(cache)
         with self._lifecycle:
             if self._closed.is_set():
                 raise RuntimeError("Liquid worker was cancelled before starting")
