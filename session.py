@@ -15,7 +15,7 @@ from ._tasks import result_owned, submit_owned
 
 _active = None
 _playback_guard = False
-_render_frame = None
+_render_frames = {}  # Scene pointer -> frame being rendered.
 
 
 def active():
@@ -376,35 +376,36 @@ def _show_cached(scene, frame):
 
 @persistent
 def _frame_change(scene, depsgraph=None):
-    global _render_frame
     if _active is not None or _playback_guard:
         return
-    if _render_frame is not None:
+    rendering = _render_frames.get(scene.as_pointer())
+    if rendering is not None:
         # A motion-blurred render evaluates the scene at the shutter's open and
         # close times. Loading the neighbouring frame there swaps the surface
         # for one with other topology in the middle of the renderer's export
         # (measured: 110 s instead of 3 s for four Cycles samples). The frame
         # being rendered stays; its motion comes from the velocity attribute.
-        if abs(scene.frame_current + scene.frame_subframe - _render_frame) <= max(1.0, scene.render.motion_blur_shutter):
+        if abs(scene.frame_current + scene.frame_subframe - rendering) <= max(1.0, scene.render.motion_blur_shutter):
             return
-        _render_frame = None  # A render that never reported its end.
+        _render_frames.pop(scene.as_pointer(), None)  # A render that never reported its end.
     _show_cached(scene, scene.frame_current)
 
 
 @persistent
 def _render_pre(scene, *_):
-    global _render_frame
     if _active is not None or _playback_guard:
         return
-    _render_frame = None
+    _render_frames.pop(scene.as_pointer(), None)
     _show_cached(scene, scene.frame_current)
-    _render_frame = scene.frame_current
+    _render_frames[scene.as_pointer()] = scene.frame_current
 
 
 @persistent
-def _render_end(*_):
-    global _render_frame
-    _render_frame = None
+def _render_end(scene=None, *_):
+    if scene is None:
+        _render_frames.clear()
+    else:
+        _render_frames.pop(scene.as_pointer(), None)
 
 
 def register():
