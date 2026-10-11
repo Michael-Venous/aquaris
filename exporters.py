@@ -161,6 +161,8 @@ class SceneExporter:
         self.domain = domain
         self.previous = {}
         self.boundary_cache = {}
+        # Outward face normal of every collider sample, in the order _boundary returned them.
+        self.boundary_normals = {}
         self.initialized = set()
         self.next_emission = {}
         self.time = 0.0
@@ -524,7 +526,7 @@ class SceneExporter:
             raise RuntimeError(f"{obj.name}: collider requires evaluated mesh faces")
         previous = self.previous.get(history_key)
         old_world = previous[0] if previous is not None and len(previous[0]) == len(world) and np.array_equal(previous[2], triangles) else None
-        points, velocities = [], []
+        points, velocities, normals = [], [], []
         for triangle in triangles:
             a, b, c = world[triangle]
             edge_length = float(np.linalg.norm(b - a))
@@ -571,11 +573,13 @@ class SceneExporter:
                 velocity = np.zeros_like(positions)
             points.append(positions)
             velocities.append(velocity)
+            normals.append(np.broadcast_to(normal / normal_length, positions.shape))
         # Shared-edge samples are intentionally deduplicated.
         points = np.concatenate(points) if points else np.empty((0, 3))
         velocities = np.concatenate(velocities) if velocities else np.empty((0, 3))
         _, unique = np.unique(np.round(points / (spacing * 1e-5)).astype(np.int64), axis=0, return_index=True)
         result = points[unique]
+        self.boundary_normals[history_key] = (np.concatenate(normals) if normals else np.empty((0, 3)))[unique]
         self.boundary_cache[history_key] = (world, triangles, spacing, result)
         return result, velocities[unique]
 
@@ -631,6 +635,7 @@ class SceneExporter:
         p = self.domain.fumaris_liquid
         spacing = p.particle_radius * 2
         emitted, emitted_velocity, boundary, boundary_velocity = [], [], [], []
+        boundary_normal = []
         emission_batches = []
         emitted_count = 0
         excluded_count = 0
@@ -737,6 +742,10 @@ class SceneExporter:
                     if props.role == "COLLIDER":
                         boundary.append(positions)
                         boundary_velocity.append(velocities)
+                        # The side liquid may not enter. Samples without a mesh face behind them send none.
+                        facing = self.boundary_normals.get(key)
+                        boundary_normal.append(facing if facing is not None and len(facing) == len(positions)
+                                               else np.zeros_like(positions))
                     elif repetitions:
                         source_emitted |= bool(len(positions))
                         for emission_time in emission_times:
@@ -761,14 +770,15 @@ class SceneExporter:
         self.time += dt
         concat = lambda values: np.concatenate(values, axis=0) if values else np.empty((0, 3))
         arrays = {"positions": concat(emitted), "velocities": concat(emitted_velocity),
-                  "boundary_positions": concat(boundary), "boundary_velocities": concat(boundary_velocity)}
+                  "boundary_positions": concat(boundary), "boundary_velocities": concat(boundary_velocity),
+                  "boundary_normals": concat(boundary_normal)}
         self._budget(len(arrays["positions"]))
         if len(arrays["boundary_positions"]) > limits(p)[1]:
             raise RuntimeError(_over(p, "Combined collider sampling", "simplify geometry or increase the particle radius"))
         if len(forces) > 31 or len(outflows) > 32:
             raise RuntimeError("A simulation supports at most 31 effectors and 32 outflows")
         boundary_arrays = tuple(np.ascontiguousarray(arrays[name], dtype='<f4')
-                                for name in ('boundary_positions', 'boundary_velocities'))
+                                for name in ('boundary_positions', 'boundary_velocities', 'boundary_normals'))
         reuse = self.last_boundary_arrays is not None and all(
             np.array_equal(a, b) for a, b in zip(boundary_arrays, self.last_boundary_arrays))
         if self.boundary_motion_from_velocity and np.any(boundary_arrays[1] != 0):
@@ -776,7 +786,7 @@ class SceneExporter:
             reuse = False
         self.last_boundary_arrays = boundary_arrays
         if reuse:
-            del arrays['boundary_positions'], arrays['boundary_velocities']
+            del arrays['boundary_positions'], arrays['boundary_velocities'], arrays['boundary_normals']
         blocks, payload = pack_blocks(arrays)
         fps = self.scene.render.fps / max(self.scene.render.fps_base, 1e-8)
         return {"frame": int(frame), "dt": float(dt), "blocks": blocks,
