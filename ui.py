@@ -79,6 +79,13 @@ def _transport(layout, context, domain, compact=False):
     for line in textwrap.wrap(p.status, width=width):
         box.label(text=line)
     if not compact:
+        quality = box.row(align=True)
+        quality.enabled = running is None
+        current = {name: getattr(p, name) for name in operators.QUALITY_LEVELS["DRAFT"]}
+        for level, label in (("DRAFT", "Draft"), ("FINAL", "Final")):
+            match = all(abs(current[name] - value) < 1e-6 if isinstance(value, float) else current[name] == value
+                        for name, value in operators.QUALITY_LEVELS[level].items())
+            quality.operator("fumaris_liquid.quality", text=label, depress=match).level = level
         box.operator("fumaris_liquid.copy_diagnostics", text="Copy Diagnostics", icon="COPYDOWN")
     if p.last_error:
         error = box.column()

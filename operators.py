@@ -192,6 +192,38 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
         return {"FINISHED"}
 
 
+QUALITY_LEVELS = {
+    # Two pressure iterations halve the solve and a cell of two radii meshes
+    # several times faster; splashes are softer (about a third of the crown).
+    "DRAFT": {"iterations": 2, "mesh_quality": "FAST", "mesh_cell_relative": True, "mesh_cell_factor": 2.0},
+    "FINAL": {"iterations": 6, "mesh_quality": "SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0},
+}
+
+
+class LIQUID_OT_quality(bpy.types.Operator):
+    bl_idname = "fumaris_liquid.quality"
+    bl_label = "Set Liquid Quality"
+    bl_description = ("Set the settings that trade speed for quality in one step. Draft: 2 pressure iterations, "
+                      "Fast mesh at a cell of 2 radii. Final: 6 iterations, Smooth mesh at 1 radius. "
+                      "Each setting stays editable afterwards")
+    bl_options = {"REGISTER", "UNDO"}
+    level: bpy.props.EnumProperty(items=[("DRAFT", "Draft", "Fast to simulate and mesh, softer splashes"),
+                                         ("FINAL", "Final", "Full pressure solve and the smooth surface")])
+
+    def execute(self, context):
+        domain = domain_for(context)
+        if domain is None:
+            self.report({"ERROR"}, "Select a liquid domain")
+            return {"CANCELLED"}
+        if session.active() is not None:
+            self.report({"ERROR"}, "Stop the simulation before changing quality")
+            return {"CANCELLED"}
+        for name, value in QUALITY_LEVELS[self.level].items():
+            setattr(domain.fumaris_liquid, name, value)
+        self.report({"INFO"}, f"{self.level.title()} quality set")
+        return {"FINISHED"}
+
+
 class LIQUID_OT_diagnostics(bpy.types.Operator):
     bl_idname = "fumaris_liquid.copy_diagnostics"
     bl_label = "Copy Diagnostics"
@@ -217,7 +249,7 @@ class LIQUID_OT_diagnostics(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_export_alembic, LIQUID_OT_diagnostics)
+classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_export_alembic, LIQUID_OT_quality, LIQUID_OT_diagnostics)
 
 
 def register():

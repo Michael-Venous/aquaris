@@ -126,6 +126,15 @@ The runtime supports 31 effectors and 32 outflows. Collider surfaces are sampled
 up to 4,000,000 samples; finer particle radii need more of them and more GPU
 memory.
 
+## Draft and Final
+
+The **Draft** and **Final** buttons under the domain's status set the settings
+that trade speed for quality in one step, and light up when the current
+settings match. Draft: 2 pressure iterations, Fast mesh, surface cell of 2
+particle radii; the solve takes about half as long and meshing several times
+less, splashes are softer and the surface coarser. Final: 6 iterations, Smooth
+mesh, cell of 1 radius. Every setting stays editable afterwards.
+
 ## Limits and surface detail
 
 **Automatic Limits** (on by default) lets a domain use up to the solver's own
