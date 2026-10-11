@@ -138,8 +138,9 @@ mesh, cell of 1 radius. Every setting stays editable afterwards.
 ## Limits and surface detail
 
 **Automatic Limits** (on by default) lets a domain use up to the solver's own
-limits: 8 million liquid particles, 4 million collider samples and 64 million
-surface cells. Nothing is reserved in advance; memory is taken as the
+limits: 4 million liquid particles, 4 million collider samples and 64 million
+surface cells (a fixed Particle Budget may be set up to 8 million for
+particle-only output). Nothing is reserved in advance; memory is taken as the
 simulation grows, so lowering the particle radius simply works until the GPU
 runs out, which is reported. Turn it off to use the **Particle Budget**,
 **Collider Sample Budget** and **Surface Cell Budget** as early stops for a

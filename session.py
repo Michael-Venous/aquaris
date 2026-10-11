@@ -368,6 +368,11 @@ def _load_post(_):
             obj.fumaris_liquid.last_error = ""
             obj.fumaris_liquid.runtime_info = ""
             obj.fumaris_liquid.runtime_warning = ""
+            p = obj.fumaris_liquid
+            if not p.is_property_set("mesh_cell_relative") and p.is_property_set("mesh_cell_size"):
+                # Saved before the cell followed the radius: keep the detail it had.
+                p.mesh_cell_factor = min(4.0, max(0.5, p.mesh_cell_size / max(p.particle_radius, 1e-6)))
+                p.mesh_cell_relative = True
     _frame_change(bpy.context.scene)
 
 

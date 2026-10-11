@@ -161,6 +161,11 @@ def _draw(layout, context):
         if box is not None:
             structural = box.column()
             structural.enabled = running is None
+            structural.prop(p, "solver")
+            if p.solver == "FLIP":
+                note = box.column(align=True)
+                note.label(text="Grid solver: experimental", icon="INFO")
+                note.label(text="No viscosity, tension, whitewater or effectors yet")
             structural.prop(p, "particle_radius")
             for name in ("iterations", "substeps", "speed", "gravity", "kinematic_viscosity", "viscosity", "surface_tension",
                          "pressure_speed_gain"):

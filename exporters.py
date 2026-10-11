@@ -33,7 +33,9 @@ def participants(scene, domain):
                 yield obj
 
 
-PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT = 8_000_000, 4_000_000, 64_000_000
+# Four million particles is what the surface path can follow: a one-radius
+# cell needs 9-14 surface nodes per particle against the 64 million cell cap.
+PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT = 4_000_000, 4_000_000, 64_000_000
 
 
 def limits(p):
@@ -69,6 +71,7 @@ def settings(scene, domain):
         raise RuntimeError("Whitewater maximum lifetime must be at least its minimum")
     scale = max(1e-8, scene.unit_settings.scale_length)
     return {
+        "solver": p.solver,
         "particle_radius": p.particle_radius,
         "iterations": p.iterations,
         "substeps": p.substeps,

@@ -39,6 +39,12 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_object: PointerProperty(type=bpy.types.Object)
     particle_object: PointerProperty(type=bpy.types.Object)
     mist_object: PointerProperty(type=bpy.types.Object)
+    solver: EnumProperty(name="Solver", items=[
+        ("PBF", "Particles", "Position-based particle solver. Supports every feature: viscosity, surface tension, whitewater, effectors"),
+        ("FLIP", "Grid (experimental)", "Particles moved by a pressure solve on a grid. Tens of times faster and forms crowns from "
+                                        "solid impacts. No viscosity, surface tension, whitewater or effectors yet; colliders are "
+                                        "treated as thin shells"),
+    ], default="PBF", description="How the liquid is simulated; restart to change")
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005,
                                   max=2, subtype="DISTANCE",
                                   description="World-space sampling and solver radius; restart to change")
@@ -64,7 +70,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
     bounds_max: FloatVectorProperty(name="Maximum", default=(3, 2, 4), size=3,
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
     auto_budgets: BoolProperty(name="Automatic Limits", default=True,
-                               description="Let particles, collider samples and surface cells grow to the solver's own limits (8 million particles, 4 million collider samples, 64 million surface cells). Memory is taken as the simulation grows, so nothing is reserved in advance. Turn off to set smaller budgets that stop a runaway setup early")
+                               description="Let particles, collider samples and surface cells grow to the solver's own limits (4 million particles, 4 million collider samples, 64 million surface cells). Memory is taken as the simulation grows, so nothing is reserved in advance. Turn off to set smaller budgets that stop a runaway setup early")
     max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000)
     max_whitewater: IntProperty(name="Whitewater Budget", default=25000, min=0, max=1000000)
     max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=4000000,
