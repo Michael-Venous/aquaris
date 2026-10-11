@@ -15,6 +15,7 @@ from ._tasks import result_owned, submit_owned
 
 _active = None
 _playback_guard = False
+_render_frame = None
 
 
 def active():
@@ -334,6 +335,7 @@ def shutdown():
 
 @persistent
 def _load_pre(_):
+    _render_end()
     shutdown()
     display.clear_runtime()
     from . import preview
@@ -351,11 +353,8 @@ def _load_post(_):
     _frame_change(bpy.context.scene)
 
 
-@persistent
-def _frame_change(scene, depsgraph=None):
+def _show_cached(scene, frame):
     global _playback_guard
-    if _active is not None or _playback_guard:
-        return
     _playback_guard = True
     try:
         for domain in scene.objects:
@@ -363,22 +362,59 @@ def _frame_change(scene, depsgraph=None):
             if p.role != "DOMAIN" or not p.cache_playback or not p.domain_id:
                 continue
             try:
-                header, payload = cache_for(domain).read(scene.frame_current)
+                header, payload = cache_for(domain).read(frame)
                 display.apply(scene, domain, header, payload)
             except FileNotFoundError:
                 # Do not display a different cached frame while rendering a gap.
                 display.clear(domain)
-                p.status = f"No cache for frame {scene.frame_current}"
+                p.status = f"No cache for frame {frame}"
             except Exception as exc:
                 p.last_error = str(exc)
     finally:
         _playback_guard = False
 
 
+@persistent
+def _frame_change(scene, depsgraph=None):
+    global _render_frame
+    if _active is not None or _playback_guard:
+        return
+    if _render_frame is not None:
+        # A motion-blurred render evaluates the scene at the shutter's open and
+        # close times. Loading the neighbouring frame there swaps the surface
+        # for one with other topology in the middle of the renderer's export
+        # (measured: 110 s instead of 3 s for four Cycles samples). The frame
+        # being rendered stays; its motion comes from the velocity attribute.
+        if abs(scene.frame_current + scene.frame_subframe - _render_frame) <= max(1.0, scene.render.motion_blur_shutter):
+            return
+        _render_frame = None  # A render that never reported its end.
+    _show_cached(scene, scene.frame_current)
+
+
+@persistent
+def _render_pre(scene, *_):
+    global _render_frame
+    if _active is not None or _playback_guard:
+        return
+    _render_frame = None
+    _show_cached(scene, scene.frame_current)
+    _render_frame = scene.frame_current
+
+
+@persistent
+def _render_end(*_):
+    global _render_frame
+    _render_frame = None
+
+
 def register():
     for handlers, function in ((bpy.app.handlers.load_pre, _load_pre),
                                (bpy.app.handlers.load_post, _load_post),
-                               (bpy.app.handlers.frame_change_pre, _frame_change)):
+                               (bpy.app.handlers.frame_change_pre, _frame_change),
+                               (bpy.app.handlers.render_pre, _render_pre),
+                               (bpy.app.handlers.render_post, _render_end),
+                               (bpy.app.handlers.render_cancel, _render_end),
+                               (bpy.app.handlers.render_complete, _render_end)):
         if function not in handlers:
             handlers.append(function)
 
@@ -388,6 +424,10 @@ def unregister():
     display.clear_runtime()
     for handlers, function in ((bpy.app.handlers.load_pre, _load_pre),
                                (bpy.app.handlers.load_post, _load_post),
-                               (bpy.app.handlers.frame_change_pre, _frame_change)):
+                               (bpy.app.handlers.frame_change_pre, _frame_change),
+                               (bpy.app.handlers.render_pre, _render_pre),
+                               (bpy.app.handlers.render_post, _render_end),
+                               (bpy.app.handlers.render_cancel, _render_end),
+                               (bpy.app.handlers.render_complete, _render_end)):
         if function in handlers:
             handlers.remove(function)

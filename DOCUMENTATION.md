@@ -237,7 +237,8 @@ interpolated from nearby particles, as the mesh's `velocity` point attribute.
 With **Render > Motion Blur** enabled Cycles then blurs the liquid along its
 motion even though the mesh topology changes every frame. It adds about a third
 to the cache size. Surfaces rebuilt later from a stopped preview carry no
-vectors.
+vectors. While a frame renders, its own cached liquid stays in place at the
+shutter's open and close times; the blur comes only from these vectors.
 
 ## Interactive performance
 
