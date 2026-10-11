@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 import time
 import bpy
 import numpy as np
-from . import exporters
 from .bridge import Bridge
 from ._tasks import result_owned, submit_owned
 
@@ -143,7 +142,10 @@ def request(scene, domain, header, payload):
     key = domain.as_pointer()
     p = domain.fumaris_liquid
     settings = {'particle_radius': header.get('particle_radius', p.particle_radius),
-                'mesh_cell_size': exporters.mesh_cell(p), 'max_mesh_cells': exporters.limits(p)[2],
+                # As exporters.mesh_cell/limits; kept local so this module needs no scene exporter.
+                'mesh_cell_size': (max(0.005, p.particle_radius * getattr(p, 'mesh_cell_factor', 1.0))
+                                   if getattr(p, 'mesh_cell_relative', False) else p.mesh_cell_size),
+                'max_mesh_cells': 64_000_000 if getattr(p, 'auto_budgets', False) else p.max_mesh_cells,
                 'mesh_quality': getattr(p, 'mesh_quality', 'FAST'),
                 'droplet_scale': getattr(p, 'droplet_scale', 1.0),
                 'surface_smoothing': getattr(p, 'surface_smoothing', 0.0)}
