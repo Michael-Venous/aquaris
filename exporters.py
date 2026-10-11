@@ -54,6 +54,7 @@ def settings(scene, domain):
         "surface_tension": p.surface_tension,
         "max_particles": p.max_particles,
         "max_whitewater": p.max_whitewater,
+        "max_boundary": p.max_boundary,
         "whitewater": p.whitewater,
         "whitewater_generation": p.whitewater_generation,
         "whitewater_energy_min": p.whitewater_energy_min / (scale * scale),
@@ -129,6 +130,7 @@ class SceneExporter:
         self.time = 0.0
         self.image_cache = {}
         self.mask_frame = None
+        masks.clear()  # Temporary sequence images of an earlier run.
         self.last_boundary_arrays = None
         self.solid_cache = {}
 
@@ -518,8 +520,8 @@ class SceneExporter:
                 edge_weights[:, first], edge_weights[:, second] = 1 - fractions, fractions
                 weight_parts.append(edge_weights)
             weights = np.concatenate(weight_parts)
-            if sum(len(part) for part in points) + len(weights) > 200000:
-                raise RuntimeError(f"{obj.name}: collider sampling exceeds 200,000 points; simplify mesh or raise radius")
+            if sum(len(part) for part in points) + len(weights) > self.domain.fumaris_liquid.max_boundary:
+                raise RuntimeError(f"{obj.name}: collider sampling exceeds the collider sample budget; simplify the mesh, raise the radius or raise the budget")
             positions = weights @ world[triangle]
             if old_world is not None:
                 velocity = (positions - weights @ old_world[triangle]) / self.dt
@@ -725,8 +727,8 @@ class SceneExporter:
         arrays = {"positions": concat(emitted), "velocities": concat(emitted_velocity),
                   "boundary_positions": concat(boundary), "boundary_velocities": concat(boundary_velocity)}
         self._budget(len(arrays["positions"]))
-        if len(arrays["boundary_positions"]) > 200000:
-            raise RuntimeError("Combined colliders exceed 200,000 boundary points; simplify geometry or increase particle radius")
+        if len(arrays["boundary_positions"]) > p.max_boundary:
+            raise RuntimeError("Combined colliders exceed the collider sample budget; simplify geometry, increase particle radius or raise the budget")
         if len(forces) > 31 or len(outflows) > 32:
             raise RuntimeError("A simulation supports at most 31 effectors and 32 outflows")
         boundary_arrays = tuple(np.ascontiguousarray(arrays[name], dtype='<f4')

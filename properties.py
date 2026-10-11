@@ -54,6 +54,8 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
     max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=2000000)
     max_whitewater: IntProperty(name="Whitewater Budget", default=25000, min=0, max=1000000)
+    max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=4000000,
+                              description="Collider surface samples accepted per frame; finer particles need more")
     whitewater: BoolProperty(name="Foam, Spray and Bubbles", default=True, update=_display_update)
     whitewater_generation: FloatProperty(name="Generation", default=1, min=0, max=10)
     whitewater_energy_min: FloatProperty(name="Minimum Energy", default=0.5, min=0, max=10000,

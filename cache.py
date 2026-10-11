@@ -56,22 +56,27 @@ def _time_namespace():
 # on a local disk, and on one machine id per machine. Anything else stays locked.
 _LOCAL_FILESYSTEMS = frozenset({"ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "zfs", "bcachefs", "jfs",
                                 "reiserfs", "tmpfs", "ramfs", "overlay", "vfat", "exfat", "ntfs", "ntfs3",
-                                "fuseblk", "ecryptfs"})
+                                "fuseblk"})
 
 
 def _on_local_filesystem(path):
     try:
         target = Path(os.path.realpath(path)).parts
-        best, kind = -1, None
+        covered = False
         with open("/proc/self/mountinfo", encoding="utf-8", errors="surrogateescape") as mounts:
             for line in mounts:
-                fields = line.split()
+                # The kernel separates fields with single spaces and escapes
+                # space, tab, newline and backslash inside them; nothing else.
+                fields = line.rstrip("\n").split(" ")
                 separator = fields.index("-")
                 point = Path(re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), fields[4])).parts
-                # The last matching line wins among equal mount points: it is mounted on top.
-                if len(point) >= best and target[:len(point)] == point:
-                    best, kind = len(point), fields[separator + 1]
-        return kind in _LOCAL_FILESYSTEMS
+                if target[:len(point)] == point:
+                    # Every mount on the way down must be local: a later mount
+                    # on a shorter prefix can hide a longer one.
+                    if fields[separator + 1] not in _LOCAL_FILESYSTEMS:
+                        return False
+                    covered = True
+        return covered
     except (OSError, ValueError, IndexError):
         return False
 
@@ -188,6 +193,13 @@ class Cache:
         self._lock_release = None
         self._lock_fd = self._create_lock("Cache slot is locked by another simulation; choose a different slot")
         self._write_owner(self._lock_fd)
+        try:
+            # The slot may have been deleted and re-created by someone else
+            # between the checks above and the lock.
+            self._verify()
+        except BaseException:
+            self.release()
+            raise
         return self
 
     @staticmethod
@@ -375,15 +387,15 @@ class Cache:
             doomed = domain / name
             if not re.fullmatch(r"\.deleting-[0-9a-f]{32}", name) or doomed.is_symlink() or not doomed.is_dir():
                 continue
+            marker = doomed / MARKER
             try:
-                stored = json.loads((doomed / MARKER).read_text(encoding="utf-8"))
+                stored = None if marker.is_symlink() else json.loads(marker.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            # The marker grants deletion authority, as for a live slot.
+            # The marker grants deletion authority, as for a live slot. A
+            # leftover that still cannot be removed does not block this slot.
             if isinstance(stored, dict) and stored.get("domain_id") == self.domain_id and stored.get("schema") == SCHEMA:
                 shutil.rmtree(doomed, ignore_errors=True)
-                if doomed.exists():
-                    raise RuntimeError("Cache slot removal is incomplete; remove " + str(doomed))
 
     def delete(self):
         if self._lock_release_started:
@@ -408,6 +420,7 @@ class Cache:
                 self._write_owner(fd)
             finally:
                 os.close(fd)
+            self._verify()  # Still this domain's slot now that it is ours.
             doomed = self.path.with_name(".deleting-" + uuid.uuid4().hex)
             os.rename(self.path, doomed)
         except BaseException:

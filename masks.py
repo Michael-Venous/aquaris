@@ -1,15 +1,29 @@
 """Explicit world/object/bounds texture coordinates for particle emission masks."""
 
+import os
 from pathlib import Path
 import re
 
 import numpy as np
 
 
-def _pixels(image):
+_loaders = {}
+
+
+def clear():
+    """Remove the temporary images used to read sequence files."""
+    import bpy
+    for name in list(_loaders.values()):
+        image = bpy.data.images.get(name)
+        if image is not None:
+            bpy.data.images.remove(image)
+    _loaders.clear()
+
+
+def _pixels(image, label=None):
     width, height = image.size
     if width <= 0 or height <= 0 or len(image.pixels) != width * height * 4:
-        raise RuntimeError("The mask image has no readable RGBA pixel data")
+        raise RuntimeError("The mask image has no readable RGBA pixel data" + (": " + label if label else ""))
     pixels = np.empty(width * height * 4, dtype=np.float32)
     image.pixels.foreach_get(pixels)
     return pixels.reshape((height, width, 4))
@@ -19,11 +33,12 @@ def _sequence_pixels(image, number, cache):
     """RGBA of the sequence file for a file number, holding the first and last files.
 
     A sequence image exposes no pixels of its own; the numbered file is read
-    through a temporary image with the sequence's color settings.
+    through a temporary image with the sequence's color settings. clear()
+    removes those temporary images when the session ends.
     """
     import bpy
     first = Path(bpy.path.abspath(image.filepath, library=image.library))
-    digits = re.search(r"\d+(?=\D*$)", first.stem)
+    digits = re.search(r"[0-9]+(?=[^0-9]*$)", first.stem)
     if digits is None:
         raise RuntimeError("The mask image sequence file name has no frame number: " + first.name)
     head, tail = first.stem[:digits.start()], first.stem[digits.end():] + first.suffix
@@ -31,14 +46,16 @@ def _sequence_pixels(image, number, cache):
     listing = ("sequence", str(first.parent), head, tail, width)
     numbers = cache.get(listing) if cache is not None else None
     if numbers is None:
-        pattern = re.compile(re.escape(head) + r"(\d+)" + re.escape(tail) + r"\Z")
+        # Case follows the filesystem's own rules, as Blender's file lookup does.
+        fold = os.path.normcase
+        pattern = re.compile(re.escape(fold(head)) + r"([0-9]+)" + re.escape(fold(tail)) + r"\Z")
         try:
-            names = [entry.name for entry in first.parent.iterdir()]
+            names = [fold(entry.name) for entry in first.parent.iterdir()]
         except OSError as exc:
             raise RuntimeError("The mask image sequence folder cannot be read: " + str(first.parent)) from exc
         # Only names Blender itself would generate for this sequence.
-        numbers = sorted(int(match.group(1)) for match in map(pattern.match, names)
-                         if match and match.group() == f"{head}{int(match.group(1)):0{width}d}{tail}")
+        numbers = sorted({int(match.group(1)) for match in map(pattern.match, names)
+                          if match and match.group() == fold(f"{head}{int(match.group(1)):0{width}d}{tail}")})
         if cache is not None:
             cache[listing] = numbers
     if not numbers:
@@ -50,16 +67,22 @@ def _sequence_pixels(image, number, cache):
     key = ("sequence frame", str(path))
     pixels = cache.get(key) if cache is not None else None
     if pixels is None:
+        # One reusable temporary image per sequence: adding and removing a
+        # datablock every frame would force a dependency-graph rebuild each time.
+        loaded = bpy.data.images.get(_loaders.get(image.name_full, ""))
         try:
-            loaded = bpy.data.images.load(str(path), check_existing=False)
+            if loaded is None:
+                loaded = bpy.data.images.load(str(path), check_existing=False)
+                loaded.name = ".aquaris mask sequence"
+                _loaders[image.name_full] = loaded.name
+            else:
+                loaded.filepath = str(path)
+                loaded.reload()
         except RuntimeError as exc:
             raise RuntimeError("The mask image sequence file cannot be loaded: " + path.name) from exc
-        try:
-            loaded.colorspace_settings.name = image.colorspace_settings.name
-            loaded.alpha_mode = image.alpha_mode
-            pixels = _pixels(loaded)
-        finally:
-            bpy.data.images.remove(loaded)
+        loaded.colorspace_settings.name = image.colorspace_settings.name
+        loaded.alpha_mode = image.alpha_mode
+        pixels = _pixels(loaded, path.name)
         if cache is not None:
             cache[key] = pixels
     return pixels

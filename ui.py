@@ -173,6 +173,7 @@ def _draw(layout, context):
             box.enabled = running is None
             box.prop(p, "max_particles")
             box.prop(p, "max_whitewater")
+            box.prop(p, "max_boundary")
             box.label(text="Initial GPU region (auto expands)")
             box.prop(p, "bounds_min")
             box.prop(p, "bounds_max")

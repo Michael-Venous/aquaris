@@ -358,5 +358,6 @@ def clear(domain):
 
 def clear_runtime():
     _last_outputs.clear()
-    from . import meshing
+    from . import masks, meshing
+    masks.clear()
     meshing.shutdown()

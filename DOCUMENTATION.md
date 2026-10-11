@@ -122,7 +122,9 @@ geometry and dense boundaries need careful testing at the chosen radius.
 
 Effectors support localized force, local-Z wind, local-Z vortex and turbulence.
 Outflows remove particles inside their evaluated **world-aligned bounding box**.
-The runtime supports 31 effectors, 32 outflows and 200,000 boundary samples.
+The runtime supports 31 effectors and 32 outflows. Collider surfaces are sampled
+up to the domain's **Collider Sample Budget** (default 200,000, maximum 4,000,000);
+finer particle radii need a larger budget and more GPU memory.
 
 ## Output, recording and rendering
 
