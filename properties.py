@@ -82,6 +82,9 @@ class LiquidProperties(bpy.types.PropertyGroup):
     droplet_scale: FloatProperty(name="Droplet Size", default=1, min=0.05, max=1, subtype="FACTOR",
                                  description="Size of detached droplets of one to three particles in the surface mesh. "
                                              "1 keeps their particle volume; smaller values draw splashes as finer spray")
+    surface_velocity: BoolProperty(name="Surface Motion Vectors", default=True,
+                                   description="Store a velocity for every surface vertex so renders can motion-blur "
+                                               "the liquid; increases cache size by about a third")
     speed: FloatProperty(name="Simulation Speed", default=1, min=0.01, max=10)
     record_preview: BoolProperty(name="Record Preview", default=False,
                                  description="Write each simulated frame into the selected cache slot")

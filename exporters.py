@@ -70,6 +70,7 @@ def settings(scene, domain):
         "mesh_cell_size": p.mesh_cell_size,
         "mesh_quality": p.mesh_quality,
         "droplet_scale": p.droplet_scale,
+        "surface_velocity": p.surface_velocity,
         "max_mesh_cells": p.max_mesh_cells,
     }
 

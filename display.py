@@ -280,6 +280,10 @@ def apply(scene, domain, header, payload):
     else:
         if header.get("surface", True):
             _mesh(p.surface_object.data, vertices, triangles)
+            # Cycles motion-blurs a mesh from a point attribute named "velocity".
+            motion = block(header, payload, "vertex_velocities")
+            if len(motion) == len(vertices) and len(vertices):
+                _attribute(p.surface_object.data, "velocity", motion)
         else:
             p.surface_object.data.clear_geometry()
         _mesh(p.particle_object.data, positions)
