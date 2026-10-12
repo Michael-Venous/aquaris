@@ -54,7 +54,9 @@ def read_message(stream):
     if not isinstance(header, dict):
         raise ValueError("Liquid message header must be an object")
     payload = _read_exact(stream, payload_size)
-    validate_blocks(header, payload)
+    # A payload returned through shared memory is checked by the bridge, which holds the mapping.
+    if "payload_memory" not in header:
+        validate_blocks(header, payload)
     return header, payload
 
 

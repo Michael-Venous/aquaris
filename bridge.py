@@ -1,13 +1,15 @@
 """Process isolation for the native GPU runtime; no bpy access on worker threads."""
 from collections import deque
+import mmap
 import os
+import secrets
 import sys
 from pathlib import Path
 import subprocess
 import threading
 import tempfile
 
-from .protocol import read_message, write_message
+from .protocol import read_message, validate_blocks, write_message
 
 
 class _WriteAttempt:
@@ -79,8 +81,50 @@ def _shader_cache_directory():
     return None
 
 
+# First size of each of the two regions frame payloads are returned in. Only
+# pages that are written take memory; a larger frame makes the regions grow.
+RESPONSE_MEMORY = 256 * 1024 * 1024
+
+
+class _ResponseMemory:
+    """Two POSIX shared-memory regions the worker writes frame payloads into, in turn.
+
+    The files are removed as soon as both processes have them mapped, so nothing
+    is left behind if either dies. A payload handed out is a view of a region and
+    stays valid for exactly one further frame; the mapping itself lives as long
+    as any view of it does.
+    """
+    def __init__(self, size):
+        self.size, self.names, self.maps = size, [], []
+        try:
+            for index in range(2):
+                name = f"/aquaris-{os.getpid()}-{secrets.token_hex(6)}-{index}"
+                descriptor = os.open("/dev/shm" + name, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+                self.names.append(name)
+                try:
+                    os.ftruncate(descriptor, size)
+                    self.maps.append(mmap.mmap(descriptor, size))
+                finally:
+                    os.close(descriptor)
+        except BaseException:
+            self.unlink()
+            raise
+
+    def unlink(self):
+        for name in self.names:
+            try:
+                os.unlink("/dev/shm" + name)
+            except OSError:
+                pass
+        self.names = []
+
+
 class Bridge:
     def __init__(self, executable=None):
+        # Set before start() by a client that reads each frame's payload before
+        # asking for the frame after next (the live session does).
+        self.shared_responses = False
+        self._memory = None
         self.executable = Path(executable) if executable else None
         self.process = None
         self._lock = threading.Lock()
@@ -122,6 +166,8 @@ class Bridge:
         self.launch()
         try:
             header, _ = self.request("init", {"settings": settings})
+            if self.shared_responses and header.get("shared_memory"):
+                self._share(RESPONSE_MEMORY)
             return header
         except Exception as exc:
             try:
@@ -137,7 +183,34 @@ class Bridge:
         except (OSError, ValueError):
             pass  # Cancellation can close the pipe while the reader is blocked.
 
+    def _share(self, size):
+        """Ask the worker to return frame payloads through shared memory; False leaves the pipe in use."""
+        self._memory = None
+        if (not sys.platform.startswith("linux") or not os.path.isdir("/dev/shm")
+                or os.environ.get("FUMARIS_LIQUID_SHARED_MEMORY") == "0"):
+            return False
+        try:
+            memory = _ResponseMemory(size)
+        except (OSError, ValueError):
+            return False
+        try:
+            self._exchange("transport", {"response_memory": memory.names, "size": size})
+        except RuntimeError:
+            return False
+        finally:
+            memory.unlink()
+        self._memory = memory
+        return True
+
     def request(self, action, header=None, payload=b""):
+        response, data = self._exchange(action, header, payload)
+        needed = response.pop("payload_overflow", None)
+        if needed is not None and self._memory is not None:
+            # This frame came through the pipe; make room for the following ones.
+            self._share(max(2 * int(needed), 2 * self._memory.size))
+        return response, data
+
+    def _exchange(self, action, header=None, payload=b""):
         with self._lock:
             process = self.process
             if self._closed.is_set() or process is None:
@@ -183,6 +256,15 @@ class Bridge:
                 if response.get("fatal") is True:
                     self._closed.set()
                 raise RuntimeError(response.get("error", "Liquid worker failed"))
+            index = response.pop("payload_memory", None)
+            if index is not None:
+                size = int(response.pop("payload_bytes"))
+                memory = self._memory
+                if memory is None or not 0 <= int(index) < 2 or not 0 <= size <= memory.size:
+                    self._closed.set()
+                    raise RuntimeError(self._failure("Liquid worker returned a payload outside the shared memory"))
+                data = memoryview(memory.maps[int(index)])[:size]
+                validate_blocks(response, data)
             return response, data
 
     def _failure(self, message):

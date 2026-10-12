@@ -39,6 +39,8 @@ class Session:
         self.cache = cache_for(domain) if self.recording else None
         self.exporter = exporters.SceneExporter(scene, domain)
         self.bridge = Bridge()
+        # The loop reads a frame before it asks for the one after next, which is what shared payloads need.
+        self.bridge.shared_responses = True
         self.future = None
         self._tickets = []
         self._work_tickets = []
