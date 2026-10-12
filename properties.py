@@ -75,6 +75,8 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
     bounds_max: FloatVectorProperty(name="Maximum", default=(3, 2, 4), size=3,
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
+    remove_strays: BoolProperty(name="Remove Escaped Liquid", default=True,
+                                description="Remove liquid that has fallen or been thrown well clear of every collider, emitter and the region above; it cannot come back, and would otherwise be simulated for as long as it keeps falling")
     auto_budgets: BoolProperty(name="Automatic Limits", default=True,
                                description="Let particles, collider samples and surface cells grow to the solver's own limits (4 million particles, 4 million collider samples, 64 million surface cells). Memory is taken as the simulation grows, so nothing is reserved in advance. Turn off to set smaller budgets that stop a runaway setup early")
     max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000)

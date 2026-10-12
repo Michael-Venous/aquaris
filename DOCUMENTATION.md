@@ -8,8 +8,13 @@ physical accuracy claims depend on the validation record shipped with the build.
 ## Start a simulation
 
 Open **Physics > Aquaris** or the viewport's **Aquaris** sidebar.
-Choose **Dam Break**, **Pour**, or **Viscous** to create an isolated setup at the
-3D cursor. Existing scene objects stay in place. Each setup creates a domain
+**Quick Setup** creates an isolated setup at the 3D cursor. The three
+**real-time** setups (**Splash**, **Dam Break**, **Pour**) use the grid solver
+with 15,000 to 25,000 particles and the GPU surface, sized to play back live
+with a surface on a mid-range graphics card; Splash, a ball dropped into a
+pool, is the default. The three **particles** setups (**Dam Break**, **Pouring
+Water**, **Viscous Pour**) use the particle solver with whitewater and are
+meant to be baked. Existing scene objects stay in place. Each setup creates a domain
 settings object, participant collections, a five-solid basin and three output
 objects. Emitters appear as wireframes and are hidden from final rendering.
 
@@ -25,7 +30,12 @@ can run at a time. Pausing completes the already submitted frame. Changing the
 active scene or loading a different file stops the worker.
 
 Domain minimum/maximum specify the initial GPU region. The native region grows
-as needed. Add collider meshes to make a physical container. Growing the region
+as needed. **Remove Escaped Liquid** (on by default, under Allocation and
+Budgets) removes liquid that has fallen or been thrown more than a margin (one
+metre, or a quarter of the scene's size if that is more) below or beside the
+region and every collider and emitter: nothing is left for it to land on, and
+it would otherwise be simulated for as long as it falls. The side gravity
+points away from stays open, so liquid thrown upward comes back. Add collider meshes to make a physical container. Growing the region
 uses additional GPU memory; a failed allocation stops with an error.
 
 Particle radius sets the liquid sampling spacing (twice the radius). Smaller
@@ -122,7 +132,8 @@ geometry and dense boundaries need careful testing at the chosen radius.
 
 Effectors support localized force, local-Z wind, local-Z vortex and turbulence.
 Outflows remove particles inside their evaluated **world-aligned bounding box**.
-The runtime supports 31 effectors and 32 outflows. Collider surfaces are sampled
+The runtime supports 31 effectors and 32 outflows, five of which (six without
+gravity) are taken by Remove Escaped Liquid while it is on. Collider surfaces are sampled
 up to 4,000,000 samples; finer particle radii need more of them and more GPU
 memory.
 
@@ -134,11 +145,12 @@ memory.
 describes. It supports viscosity, surface tension, whitewater and effectors.
 
 **Grid (experimental)** moves the same particles with a pressure solve on a
-grid whose cell is four particle radii. It is about ten times faster per
-particle (188,000 particles: 34 ms a frame against 318 ms on an RTX 4060 Ti)
-and takes a few steps a frame however fast the liquid moves. At the same
-Particle Radius it resolves about half the detail of the particle solver:
-splash rims are thicker and lower, so halve the radius for comparable detail.
+grid whose cell is two and a half particle radii. It is several times faster
+per particle (97,000 particles: about 100 ms a frame on an RTX 4060 Ti, where
+the particle solver takes 318 ms for 188,000) and takes a few steps a frame
+however fast the liquid moves; 15,000 to 25,000 particles play back live.
+At the same Particle Radius it resolves somewhat less detail than the particle
+solver: splash rims are thicker, so lower the radius for comparable detail.
 It has no viscosity, surface tension, whitewater or effectors yet; those
 settings are greyed. Colliders must be meshes whose face normals point out of
 the solid towards the liquid (Blender's default for boxes and spheres).

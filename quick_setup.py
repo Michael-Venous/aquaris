@@ -44,6 +44,43 @@ def _cylinder(name, collection, location, size):
     return obj
 
 
+def _sphere(name, collection, location, radius):
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    try:
+        bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=16, radius=radius)
+        bm.to_mesh(mesh)
+    finally:
+        bm.free()
+    for polygon in mesh.polygons:
+        polygon.use_smooth = True
+    obj = bpy.data.objects.new(name, mesh)
+    collection.objects.link(obj)
+    obj.location = location
+    return obj
+
+
+# Presets that run in real time on the grid solver with a surface shown.
+REALTIME = {"SPLASH", "REALTIME_DAM_BREAK", "REALTIME_POUR"}
+
+
+def _realtime(p):
+    """Grid solver settings measured to hold about 20-28 frames a second with a
+    surface on an RTX 4060 Ti: 15,000-26,000 particles, surface built on the GPU."""
+    p.solver = "FLIP"
+    p.particle_radius = 0.028
+    p.display = "SURFACE"
+    p.mesh_quality = "GPU"
+    p.mesh_cell_relative = True
+    p.mesh_cell_factor = 1.0
+    p.surface_smoothing = 0.6
+    p.jet_limit = 2.0
+    p.substeps = 1
+    # The grid solver makes no whitewater; leave the switch off so a later
+    # change of solver starts from what was seen.
+    p.whitewater = False
+
+
 def create(context, preset="DAM_BREAK"):
     scene = context.scene
     origin = scene.cursor.location.copy()
@@ -90,7 +127,37 @@ def create(context, preset="DAM_BREAK"):
         obj = _box(name, colliders, origin + Vector(location), size)
         obj.fumaris_liquid.role = "COLLIDER"
         obj.display_type = "WIRE"
-    if preset == "DAM_BREAK":
+    if preset in REALTIME:
+        _realtime(p)
+    if preset == "SPLASH":
+        # A ball dropped into a pool: the crown a solid impact throws up is
+        # what the grid solver does and the particle solver cannot.
+        emitter = _box("Initial Pool", emitters, origin + Vector((0, 0, 0.26)), (3.94, 2.04, 0.5))
+        emitter.fumaris_liquid.emission_mode = "INITIAL"
+        ball = _sphere("Falling Ball", colliders, origin + Vector((0, 0, 2.0)), 0.32)
+        ball.fumaris_liquid.role = "COLLIDER"
+        start = scene.frame_current
+        for frame, height in ((start, 2.0), (start + 8, 2.0), (start + 14, 0.36)):
+            ball.location = origin + Vector((0, 0, height))
+            ball.keyframe_insert("location", frame=frame)
+        # Constant speed down to the stop, about 6.5 m/s at 24 frames a second.
+        for layer in ball.animation_data.action.layers:
+            for strip in layer.strips:
+                for bag in strip.channelbags:
+                    for curve in bag.fcurves:
+                        for key in curve.keyframe_points:
+                            key.interpolation = "LINEAR"
+        ball.location = origin + Vector((0, 0, 2.0))
+    elif preset == "REALTIME_DAM_BREAK":
+        # The block fills the basin's end from wall to wall, as in a dam-break
+        # experiment, and runs into two pillars.
+        emitter = _box("Initial Liquid", emitters, origin + Vector((-1.28, 0, 0.56)), (1.4, 2.04, 1.1))
+        emitter.fumaris_liquid.emission_mode = "INITIAL"
+        for name, location, size in (("Pillar Near", (0.35, -0.42, 0.5), (0.3, 0.3, 1.0)),
+                                     ("Pillar Far", (1.0, 0.38, 0.4), (0.36, 0.36, 0.8))):
+            pillar = _box(name, colliders, origin + Vector(location), size)
+            pillar.fumaris_liquid.role = "COLLIDER"
+    elif preset == "DAM_BREAK":
         emitter = _box("Initial Liquid", emitters, origin + Vector((-1.15, 0, 0.85)), (1.2, 1.8, 1.5))
         emitter.fumaris_liquid.emission_mode = "INITIAL"
     else:
@@ -116,7 +183,7 @@ def create(context, preset="DAM_BREAK"):
             p.surface_tension = 0.2
             p.substeps = 4
     emitter.fumaris_liquid.role = "EMITTER"
-    emitter.fumaris_liquid.source_shape = "BOX" if preset == "DAM_BREAK" else "CYLINDER"
+    emitter.fumaris_liquid.source_shape = "BOX" if preset in {"DAM_BREAK", "REALTIME_DAM_BREAK", "SPLASH"} else "CYLINDER"
     emitter.display_type = "WIRE"
     emitter.hide_render = True
     display.ensure_outputs(scene, domain)

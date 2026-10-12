@@ -42,10 +42,13 @@ class LIQUID_OT_setup(bpy.types.Operator):
     bl_description = "Add an independent liquid demonstration at the 3D cursor"
     bl_options = {"REGISTER", "UNDO"}
     preset: EnumProperty(name="Preset", items=[
-        ("DAM_BREAK", "Dam Break", "Release an initial water volume into a basin"),
-        ("POUR", "Pouring Water", "Continuous downward inflow into a basin"),
-        ("VISCOUS_POUR", "Viscous Pour", "Higher viscosity pouring example"),
-    ], default="DAM_BREAK")
+        ("SPLASH", "Splash (real-time)", "A ball dropped into a pool on the grid solver, sized to play back live with a surface"),
+        ("REALTIME_DAM_BREAK", "Dam Break (real-time)", "A wall of water released into pillars on the grid solver, sized to play back live"),
+        ("REALTIME_POUR", "Pour (real-time)", "Continuous inflow into a pool on the grid solver, sized to play back live"),
+        ("DAM_BREAK", "Dam Break (particles)", "Release an initial water volume into a basin, on the particle solver"),
+        ("POUR", "Pouring Water (particles)", "Continuous downward inflow into a basin, on the particle solver"),
+        ("VISCOUS_POUR", "Viscous Pour (particles)", "Higher viscosity pouring example, on the particle solver"),
+    ], default="SPLASH")
 
     @classmethod
     def poll(cls, context):

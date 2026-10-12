@@ -36,6 +36,8 @@ def participants(scene, domain):
 # Four million particles is what the surface path can follow: a one-radius
 # cell needs 9-14 surface nodes per particle against the 64 million cell cap.
 PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT = 4_000_000, 4_000_000, 64_000_000
+# Extent of the slabs that remove escaped liquid [m].
+STRAY_REACH = 1.0e4
 
 
 def limits(p):
@@ -165,6 +167,8 @@ class SceneExporter:
         # Outward face normal of every collider sample, in the order _boundary returned them.
         self.boundary_normals = {}
         self.initialized = set()
+        # Box around everything the liquid has been able to touch so far; see _strays.
+        self.reach = None
         self.next_emission = {}
         self.time = 0.0
         self.image_cache = {}
@@ -625,6 +629,37 @@ class SceneExporter:
         positions, nearest = positions[active], nearest[active]
         return positions, self._velocities(obj, props, positions, nearest, geometry), geometry
 
+    def _strays(self, p, clouds):
+        """Outflow slabs that remove liquid which has left the scene for good.
+
+        The box grows around the region and every collider and emitter seen so
+        far; liquid beyond it by a margin, below or to the sides, has nothing
+        left to land on. The side gravity points away from stays open, since
+        liquid thrown that way comes back.
+        """
+        low, high = np.array(p.bounds_min, dtype=np.float64), np.array(p.bounds_max, dtype=np.float64)
+        for cloud in clouds:
+            if len(cloud):
+                low, high = np.minimum(low, cloud.min(axis=0)), np.maximum(high, cloud.max(axis=0))
+        if self.reach is not None:
+            low, high = np.minimum(low, self.reach[0]), np.maximum(high, self.reach[1])
+        self.reach = low, high
+        margin = max(1.0, 0.25 * float((high - low).max()))
+        gravity = np.array(p.gravity, dtype=np.float64)
+        down = int(np.abs(gravity).argmax()) if np.any(gravity) else None
+        slabs = []
+        for axis in range(3):
+            for side in (0, 1):
+                if axis == down and (gravity[axis] < 0) == bool(side):
+                    continue
+                a, b = np.full(3, -STRAY_REACH), np.full(3, STRAY_REACH)
+                if side:
+                    a[axis] = high[axis] + margin
+                else:
+                    b[axis] = low[axis] - margin
+                slabs.append([a.tolist(), b.tolist()])
+        return slabs
+
     def frame(self, depsgraph, dt, frame):
         self.dt = max(dt, 1e-8)
         self.mask_frame = frame
@@ -780,8 +815,10 @@ class SceneExporter:
             raise RuntimeError(_over(p, "Combined collider sampling", "simplify geometry or increase the particle radius"))
         if forces and p.solver == "FLIP":
             raise RuntimeError("The grid solver does not support effectors yet; empty the effector collection or use the particle solver")
-        if len(forces) > 31 or len(outflows) > 32:
-            raise RuntimeError("A simulation supports at most 31 effectors and 32 outflows")
+        strays = self._strays(p, (arrays["positions"], arrays["boundary_positions"])) if p.remove_strays else []
+        if len(forces) > 31 or len(outflows) + len(strays) > 32:
+            raise RuntimeError(f"A simulation supports at most 31 effectors and {32 - len(strays)} outflows")
+        outflows = outflows + strays
         boundary_arrays = tuple(np.ascontiguousarray(arrays[name], dtype='<f4')
                                 for name in ('boundary_positions', 'boundary_velocities', 'boundary_normals'))
         reuse = self.last_boundary_arrays is not None and all(
