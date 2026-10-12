@@ -21,7 +21,7 @@ def _program(kind):
     };''')
     info.uniform_buf(0, 'FluidData', 'params')
     interface = gpu.types.GPUStageInterfaceInfo('aquaris_surface_' + kind)
-    if kind in {'depth', 'thickness'}:
+    if kind == 'depth':
         info.vertex_in(0, 'VEC2', 'corner')
         info.sampler(4, 'FLOAT_2D', 'centersImage')
         info.push_constant('INT', 'centerWidth')
@@ -36,23 +36,16 @@ def _program(kind):
                 vec3(corner * params.settings.x, 0.0), 1.0);
         }''')
         info.fragment_out(0, 'FLOAT', 'result')
-        if kind == 'depth':
-            info.depth_write('ANY')
-            info.fragment_source('''void main() {
-                float rr = dot(uv, uv);
-                if (rr >= 1.0) discard;
-                vec3 point = centerView + vec3(uv, sqrt(1.0-rr))*params.settings.x;
-                if (point.z >= 0.0) discard;
-                vec4 clip = params.projection * vec4(point, 1.0);
-                gl_FragDepth = clip.z / clip.w * 0.5 + 0.5;
-                result = -point.z;
-            }''')
-        else:
-            info.fragment_source('''void main() {
-                float rr = dot(uv, uv);
-                if (rr >= 1.0) discard;
-                result = 2.0*params.settings.x*sqrt(1.0-rr);
-            }''')
+        info.depth_write('ANY')
+        info.fragment_source('''void main() {
+            float rr = dot(uv, uv);
+            if (rr >= 1.0) discard;
+            vec3 point = centerView + vec3(uv, sqrt(1.0-rr))*params.settings.x;
+            if (point.z >= 0.0) discard;
+            vec4 clip = params.projection * vec4(point, 1.0);
+            gl_FragDepth = clip.z / clip.w * 0.5 + 0.5;
+            result = -point.z;
+        }''')
     else:
         info.vertex_in(0, 'VEC2', 'position')
         interface.smooth('VEC2', 'uv')
@@ -90,7 +83,6 @@ def _program(kind):
                 result = sum/max(weights, 1e-8);
             }''')
         else:
-            info.sampler(1, 'FLOAT_2D', 'thicknessImage')
             info.fragment_out(0, 'VEC4', 'fragColor')
             info.depth_write('ANY')
             info.fragment_source('''
@@ -133,7 +125,8 @@ def _program(kind):
                 vec3 eye=params.projection[3][3]==0.0 ? normalize(-point) : vec3(0.0,0.0,1.0);
                 float facing=max(dot(normal,eye),0.0);
                 float fresnel=0.02+0.98*pow(1.0-facing,5.0);
-                float thickness=max(texture(thicknessImage,uv).r,params.settings.x);
+                // One fixed depth of liquid for tint and opacity: no per-pixel thickness is accumulated.
+                float thickness=params.settings.x*4.0;
                 vec3 transmission=exp(-thickness*vec3(2.4,0.65,0.32));
                 vec3 base=mix(params.tint.xyz,vec3(0.05,0.23,0.31),transmission);
                 float diffuse=0.45+0.55*max(dot(normal,normalize(vec3(-0.4,0.6,0.8))),0.0);
@@ -169,12 +162,10 @@ class SurfaceTarget:
         self.size = (width, height)
         self.depth = gpu.types.GPUTexture(self.size, format='DEPTH_COMPONENT32F')
         self.images = [gpu.types.GPUTexture(self.size, format='R32F') for _ in range(2)]
-        self.thickness = gpu.types.GPUTexture(self.size, format='R16F')
-        for texture in (*self.images, self.thickness):
+        for texture in self.images:
             texture.filter_mode(False)
         self.depth_fb = gpu.types.GPUFrameBuffer(depth_slot=self.depth,color_slots=self.images[0])
         self.filter_fb = [gpu.types.GPUFrameBuffer(color_slots=t) for t in self.images]
-        self.thickness_fb = gpu.types.GPUFrameBuffer(color_slots=self.thickness)
 
     def draw(self, geometry, radius, view, projection, iterations=2):
         import gpu
@@ -195,14 +186,7 @@ class SurfaceTarget:
                 program=_program('depth');program.bind()
                 program.uniform_block('params',uniform);program.uniform_float('viewMatrix',view)
                 geometry.draw(program)
-            with self.thickness_fb.bind():
-                gpu.state.viewport_set(0,0,width,height)
-                gpu.state.depth_test_set('NONE');gpu.state.depth_mask_set(False)
-                gpu.state.blend_set('ADDITIVE')
-                self.thickness_fb.clear(color=(0.0,0.0,0.0,0.0))
-                program=_program('thickness');program.bind()
-                program.uniform_block('params',uniform);program.uniform_float('viewMatrix',view)
-                geometry.draw(program)
+            gpu.state.depth_test_set('NONE');gpu.state.depth_mask_set(False)
             program=_program('filter');quad=_fullscreen();source=0
             gpu.state.blend_set('NONE')
             for _ in range(iterations):
@@ -220,7 +204,6 @@ class SurfaceTarget:
             gpu.state.blend_set('ALPHA')
             program=_program('shade');program.bind();program.uniform_block('params',uniform)
             program.uniform_sampler('depthImage',self.images[source])
-            program.uniform_sampler('thicknessImage',self.thickness)
             quad.draw(program)
         finally:
             gpu.state.viewport_set(*old_viewport)
