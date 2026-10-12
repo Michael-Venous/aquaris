@@ -1,7 +1,9 @@
-"""Depth-correct GPU sphere impostors for inexpensive liquid iteration.
+"""Viewport-only liquid display: the meshed surface drawn directly, or particle impostors.
 
-Temporary viewport output, never a substitute for the recorded surface. GPU
-resources are created lazily in a draw context and released on file changes.
+Temporary viewport output, never a substitute for the recorded surface. The
+surface is the worker's mesh drawn by mesh_preview without becoming a Blender
+mesh; particles are depth-correct sphere impostors. GPU resources are created
+lazily in a draw context and released on file changes.
 """
 import bpy
 import numpy as np
@@ -9,7 +11,6 @@ import numpy as np
 _frames = {}
 _handler = None
 _shader = None
-_targets = {}
 _billboard = None
 
 
@@ -86,25 +87,17 @@ def batch(positions):
     return ParticleBatch(positions)
 
 
-def update(domain, positions, whitewater, whitewater_types=None):
+def update(domain, positions, whitewater, whitewater_types=None, mesh=None):
     # Keep owned data: the protocol buffer may disappear after apply returns.
+    if mesh is not None:
+        vertices, triangles, normals = mesh
+        # Normals come with the frame when the preview asked for them; otherwise they are derived when drawn.
+        mesh = (np.array(vertices, dtype=np.float32), np.array(triangles, dtype=np.int32),
+                np.array(normals, dtype=np.float32) if normals is not None and len(normals) == len(vertices) else None)
     _frames[domain.as_pointer()] = [domain, np.array(positions, dtype=np.float32),
                                   np.array(whitewater, dtype=np.float32), None, None,
-                                  np.array(whitewater_types if whitewater_types is not None else [], dtype=np.uint32)]
-
-
-def draw_surface(liquid, radius, view, projection, size, quality='BALANCED', key='offscreen'):
-    from .screen_surface import SurfaceTarget
-    scale = 0.65 if quality == 'FAST' else 1.0
-    dimensions = tuple(max(1, int(value*scale)) for value in size)
-    target = _targets.get(key)
-    if target is None or target.size != dimensions:
-        target = _targets[key] = SurfaceTarget(*dimensions)
-    if len(_targets) > 4:
-        oldest = next(iter(_targets))
-        if oldest != key:
-            _targets.pop(oldest)
-    target.draw(liquid, radius, view, projection, iterations=3 if quality == 'HIGH' else 2)
+                                  np.array(whitewater_types if whitewater_types is not None else [], dtype=np.uint32),
+                                  mesh, None]
 
 
 def draw_batches(liquid, foam, radius, view, projection):
@@ -136,7 +129,7 @@ def _draw():
     if context.region_data is None or context.space_data.type != 'VIEW_3D':
         return
     for key, frame in list(_frames.items()):
-        domain, positions, whitewater, liquid, foam, types = frame
+        domain, positions, whitewater, liquid, foam, types, mesh, surface = frame
         try:
             if domain.name not in context.scene.objects or domain.fumaris_liquid.display != 'PREVIEW':
                 continue
@@ -144,7 +137,11 @@ def _draw():
                 continue
             if context.space_data.local_view and not domain.local_view_get(context.space_data):
                 continue
-            if liquid is None and len(positions):
+            if surface is None and mesh is not None:
+                from . import mesh_preview
+                frame[7] = surface = mesh_preview.MeshBatch(*mesh)
+            # Without a surface (the mesher could not take the frame) the particles are shown.
+            if mesh is None and liquid is None and len(positions):
                 frame[3] = liquid = batch(positions)
             if foam is None and len(whitewater):
                 if len(types) == len(whitewater):
@@ -154,10 +151,12 @@ def _draw():
                     frame[4] = foam = [(batch(whitewater), .12)]
             p = domain.fumaris_liquid
             view, projection = context.region_data.view_matrix, context.region_data.window_matrix
-            if liquid is not None:
-                draw_surface(liquid, p.particle_radius, view, projection,
-                             (context.region.width, context.region.height),
-                             getattr(p, 'preview_quality', 'BALANCED'), context.region.as_pointer())
+            if surface is not None:
+                from . import mesh_preview
+                mesh_preview.draw(surface, p.particle_radius, view, projection,
+                                  (context.region.width, context.region.height), context.region.as_pointer())
+            elif liquid is not None:
+                draw_batches(liquid, None, p.particle_radius, view, projection)
             if p.whitewater and foam:
                 for geometry, factor in foam:
                     draw_batches(None, geometry, p.particle_radius*factor/.32, view, projection)
@@ -174,9 +173,8 @@ def clear(domain=None):
         _frames.clear()
         _shader = None
         _billboard = None
-        _targets.clear()
-        from . import screen_surface
-        screen_surface.clear()
+        from . import mesh_preview
+        mesh_preview.clear()
     else:
         _frames.pop(domain.as_pointer(), None)
 

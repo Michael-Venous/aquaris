@@ -36,7 +36,7 @@ def _program(kind):
     info = gpu.types.GPUShaderCreateInfo()
     info.typedef_source('''struct LiquidMeshData {
         mat4 view; mat4 projection;
-        vec4 settings; vec4 tint;
+        vec4 settings; vec4 tint; vec4 region;
     };''')
     info.uniform_buf(0, 'LiquidMeshData', 'params')
     info.vertex_in(0, 'VEC3', 'position')
@@ -80,7 +80,7 @@ def _program(kind):
             float facing = max(dot(normal, eye), 0.0);
             float fresnel = 0.02 + 0.98*pow(1.0-facing, 5.0);
             // Liquid crossed by this pixel's ray; a face cut by the near plane leaves the sum too large.
-            float thickness = clamp(texture(thicknessImage, gl_FragCoord.xy/params.settings.yz).r,
+            float thickness = clamp(texture(thicknessImage, (gl_FragCoord.xy-params.region.xy)/params.settings.yz).r,
                                     params.settings.x, params.settings.w);
             // Water takes red first: thin liquid stays pale and clear, deep liquid turns blue and opaque.
             vec3 transmission = exp(-thickness*vec3(2.2,0.7,0.35));
@@ -139,7 +139,9 @@ def draw(mesh, radius, view, projection, size, key='offscreen'):
     import gpu
     if mesh is None or mesh.batch is None:
         return
-    size = (max(1, int(size[0])), max(1, int(size[1])))
+    old_viewport = gpu.state.viewport_get()
+    # The rectangle actually drawn into decides the size; `size` is what the caller expects it to be.
+    size = (max(1, int(old_viewport[2] or size[0])), max(1, int(old_viewport[3] or size[1])))
     target = _targets.get(key)
     if target is None or target.size != size:
         target = _targets[key] = _Target(*size)
@@ -150,9 +152,9 @@ def draw(mesh, radius, view, projection, size, key='offscreen'):
     values = np.concatenate((np.asarray(view, dtype=np.float32).T.ravel(),
                              np.asarray(projection, dtype=np.float32).T.ravel(),
                              # Least and greatest depth of liquid used for tint: one particle radius to eighty.
-                             np.asarray((radius, size[0], size[1], radius * 80.0, .02, .16, .30, 1.0), dtype=np.float32)))
+                             np.asarray((radius, size[0], size[1], radius * 80.0, .02, .16, .30, 1.0,
+                                         old_viewport[0], old_viewport[1], 0.0, 0.0), dtype=np.float32)))
     uniform = gpu.types.GPUUniformBuf(values)
-    old_viewport = gpu.state.viewport_get()
     old_depth, old_mask, old_blend = gpu.state.depth_test_get(), gpu.state.depth_mask_get(), gpu.state.blend_get()
     try:
         with target.framebuffer.bind():

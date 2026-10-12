@@ -115,15 +115,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
     bake_start: IntProperty(name="Start", default=1, min=-100000, max=100000)
     bake_end: IntProperty(name="End", default=120, min=-100000, max=100000)
     display: EnumProperty(name="Display", items=[
-        ("PREVIEW", "GPU Surface", "Smooth GPU surface preview without CPU meshing; bake for renderable geometry"),
+        ("PREVIEW", "GPU Surface", "The meshed surface drawn straight to the viewport without updating Blender's mesh: the cheapest display. Switch to Surface, record or bake for renderable geometry"),
         ("SURFACE", "Surface", "Renderable liquid mesh and whitewater"),
         ("PARTICLES", "Particles", "Liquid particle diagnostic display"),
     ], default="PREVIEW", update=_display_update)
-    preview_quality: EnumProperty(name="Preview Quality", items=[
-        ("FAST", "Fast", "Reduced resolution surface for large viewports"),
-        ("BALANCED", "Balanced", "Full resolution smooth liquid surface"),
-        ("HIGH", "High", "Additional surface filtering at full resolution"),
-    ], default="BALANCED")
     status: StringProperty(name="Status", default="Ready", options={"SKIP_SAVE"})
     last_error: StringProperty(name="Error", options={"SKIP_SAVE"})
     runtime_info: StringProperty(name="Runtime", options={"SKIP_SAVE"})

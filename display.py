@@ -527,8 +527,11 @@ def apply(scene, domain, header, payload):
     positions = block(header, payload, "positions")
     whitewater = block(header, payload, "whitewater_positions")
     from . import preview
-    preview.update(domain, positions, whitewater, block(header, payload, "whitewater_types", 1, True))
-    if p.display == "PREVIEW" and not header.get("surface", True):
+    # The preview draws the meshed surface from these arrays; a surface made
+    # only for it (nothing recorded) is not written into Blender's mesh.
+    preview.update(domain, positions, whitewater, block(header, payload, "whitewater_types", 1, True),
+                   mesh=(vertices, triangles, block(header, payload, "vertex_normals")) if p.display == "PREVIEW" and header.get("surface", True) and len(triangles) else None)
+    if p.display == "PREVIEW" and (not header.get("surface", True) or header.get("preview_only")):
         for obj in (p.surface_object, p.particle_object, p.whitewater_object):
             if len(obj.data.vertices):
                 obj.data.clear_geometry()

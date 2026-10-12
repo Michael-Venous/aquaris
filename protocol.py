@@ -13,7 +13,7 @@ ENVELOPE = struct.Struct("<4sIQ")
 MAX_HEADER = 1024 * 1024
 MAX_PAYLOAD = 1536 * 1024 * 1024
 VEC3_FIELDS = frozenset({"positions", "velocities", "boundary_positions",
-                        "boundary_velocities", "boundary_normals", "vertices", "vertex_velocities", "whitewater_positions",
+                        "boundary_velocities", "boundary_normals", "vertices", "vertex_velocities", "vertex_normals", "whitewater_positions",
                         "whitewater_velocities"})
 UINT3_FIELDS = frozenset({"triangles"})
 UINT_FIELDS = frozenset({"whitewater_types"})

@@ -56,7 +56,7 @@ class Session:
         self.last_frame = domain.fumaris_liquid.bake_end if bake else None
         if bake and self.last_frame < self.frame:
             raise RuntimeError("Bake end must be at least the start frame")
-        self.last_settings = exporters.settings(scene, domain)
+        self.last_settings = self._settings()
         self.last_response = None
         if not domain.fumaris_liquid.emitter_collection:
             raise RuntimeError("Assign an emitter collection or use Quick Setup")
@@ -120,6 +120,15 @@ class Session:
         self._sent = threading.Event()
         self._submit(self._step, header, payload, update, self._sent, work=True)
 
+    def _settings(self):
+        settings = exporters.settings(self.scene, self.domain)
+        # A preview that is not recorded is always meshed on the GPU, whatever
+        # quality is chosen for the recorded surface.
+        if (self.domain.fumaris_liquid.display == "PREVIEW" and not self.recording
+                and settings.get("mesh_quality") not in {"GPU", "GPU_SMOOTH"}):
+            settings["mesh_quality"] = "GPU_SMOOTH"
+        return settings
+
     def _export_frame(self):
         started = time.perf_counter()
         p = self.domain.fumaris_liquid
@@ -130,15 +139,20 @@ class Session:
         header, payload = self.exporter.frame(depsgraph, dt, self.frame)
         # A recording always keeps the full renderable surface regardless of
         # the selected diagnostic preview display.
-        header["surface"] = self.recording or p.display == "SURFACE"
+        # The viewport preview draws the meshed surface itself, so it needs one
+        # too; when nothing is recorded that surface never becomes a Blender mesh.
+        header["surface"] = self.recording or p.display in {"SURFACE", "PREVIEW"}
+        header["normals"] = p.display == "PREVIEW"
+        header["_preview_only"] = p.display == "PREVIEW" and not self.recording
         self.export_ms = (time.perf_counter() - started) * 1000
-        settings = exporters.settings(self.scene, self.domain)
+        settings = self._settings()
         update = settings if settings != self.last_settings else None
         self.last_settings = settings
         return header, payload, update
 
     def _step(self, header, payload, update, sent=None):
         started = time.perf_counter()
+        preview_only = header.pop("_preview_only", False)
         try:
             if update is not None:
                 self.bridge.request("update", {"settings": update})
@@ -151,6 +165,8 @@ class Session:
         response["worker_ms"] = (time.perf_counter() - started) * 1000
         response["export_ms"] = self.export_ms
         response["frame"] = header["frame"]
+        if preview_only:
+            response["preview_only"] = True
         if self.cache is not None:
             self.cache.write(header["frame"], response, result)
         return response, result
@@ -159,7 +175,8 @@ class Session:
         """The held frame again, meshed with the current surface settings; no time passes."""
         if update is not None:
             self.bridge.request("update", {"settings": update})
-        response, result = self.bridge.request("snapshot", {"surface": surface, "frame": frame})
+        response, result = self.bridge.request("snapshot", {"surface": surface, "frame": frame,
+                                                            "normals": self.domain.fumaris_liquid.display == "PREVIEW"})
         response["frame"] = frame
         return response, result
 
@@ -281,7 +298,7 @@ class Session:
             # solver is holding instead of waiting for the next one.
             self._remesh = False
             try:
-                settings = exporters.settings(self.scene, self.domain)
+                settings = self._settings()
                 update = settings if settings != self.last_settings else None
                 self.last_settings = settings
                 self.phase = "SNAPSHOT"

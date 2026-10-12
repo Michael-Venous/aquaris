@@ -355,12 +355,14 @@ compositor) the nearer cached frame is shown.
 
 Use **Surface and Display > Display > GPU Surface** for fast iteration. It is
 the default for new domains; existing saved display selections remain compatible.
-This viewport filters particle depth on the GPU and reconstructs smooth surface
-normals, with water shading and, for a cache that has some, depth-tested
-whitewater. It avoids CPU
-meshing and Blender geometry updates on unrecorded frames. **Preview Quality**
-adjusts resolution/filtering. Transparency and studio reflections are simplified;
-scene refraction and final material graphs require **Surface** output. An unrecorded
+It draws the meshed surface itself: the triangles the GPU mesher builds each
+frame go straight to the viewport without becoming a Blender mesh, so an
+unrecorded frame costs no geometry update. Tint and opacity follow how much
+liquid each view ray crosses, measured on the mesh (thin sheets are pale and
+clear, deep liquid blue), with a simple studio reflection and, for a cache
+that has some, depth-tested whitewater. An unrecorded preview is always meshed
+on the GPU, whatever Mesh Quality is chosen for the recorded surface. Scene
+refraction and material graphs require **Surface** output. An unrecorded
 preview is not final render geometry. Switching a stopped preview to **Particles**
 restores diagnostic points; switching to **Surface** asynchronously meshes its
 exact frozen particles without advancing the simulation. **Mesh Quality > Final**

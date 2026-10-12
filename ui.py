@@ -210,8 +210,6 @@ def _draw(layout, context):
             structural.prop(p, "surface_velocity")
             box.prop(p, "display")
             if p.display == "PREVIEW":
-                if hasattr(p, "preview_quality"):
-                    box.prop(p, "preview_quality")
                 box.label(text="GPU Surface preview; bake for a renderable mesh")
             else:
                 box.label(text="Water/whitewater materials and nodes are editable")
