@@ -167,6 +167,10 @@ class Bridge:
                 if isinstance(exc, (EOFError, OSError, ValueError)):
                     raise RuntimeError(self._failure(str(exc))) from exc
                 raise
+            # Tell a waiting caller the worker has its request and is working on it.
+            callback, self.on_sent = getattr(self, "on_sent", None), None
+            if callback is not None:
+                callback()
             try:
                 response, data = read_message(process.stdout)
             except Exception as exc:

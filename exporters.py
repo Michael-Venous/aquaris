@@ -177,6 +177,11 @@ class SceneExporter:
         self.mask_frame = None
         masks.clear()  # Temporary sequence images of an earlier run.
         self.last_boundary_arrays = None
+        # Colliders found unmoved this frame, their zero velocities, and what the
+        # last frame's collider arrays were built from; see frame().
+        self.boundary_unmoved = set()
+        self.boundary_still = {}
+        self.last_boundary_parts = None
         self.solid_cache = {}
 
     def _solid(self, key, geometry):
@@ -528,7 +533,11 @@ class SceneExporter:
         history_key = history_key if history_key is not None else obj.as_pointer()
         cached = self.boundary_cache.get(history_key)
         if cached is not None and cached[2] == spacing and np.array_equal(cached[0], world) and np.array_equal(cached[1], triangles):
-            return cached[3], np.zeros_like(cached[3])
+            still = self.boundary_still.get(history_key)
+            if still is None or still[0] is not cached[3]:
+                still = self.boundary_still[history_key] = (cached[3], np.zeros_like(cached[3]))
+            self.boundary_unmoved.add(history_key)
+            return cached[3], still[1]
         if not len(triangles):
             raise RuntimeError(f"{obj.name}: collider requires evaluated mesh faces")
         previous = self.previous.get(history_key)
@@ -696,9 +705,11 @@ class SceneExporter:
         self.source_motion_cache.clear()
         self.source_phase_updates.clear()
         self.source_phase_frames.clear()
+        self.boundary_unmoved.clear()
         self.image_cache = {}
         p = self.domain.fumaris_liquid
         spacing = p.particle_radius * 2
+        boundary_parts = []
         emitted, emitted_velocity, boundary, boundary_velocity = [], [], [], []
         boundary_normal = []
         emission_batches = []
@@ -805,6 +816,7 @@ class SceneExporter:
                     if geometry is not None:
                         current[key] = (geometry[0], geometry[2], geometry[1])
                     if props.role == "COLLIDER":
+                        boundary_parts.append((key, id(positions), key in self.boundary_unmoved, len(positions)))
                         boundary.append(positions)
                         boundary_velocity.append(velocities)
                         # The side liquid may not enter. Samples without a mesh face behind them send none.
@@ -834,28 +846,65 @@ class SceneExporter:
         self.previous = current
         self.time += dt
         concat = lambda values: np.concatenate(values, axis=0) if values else np.empty((0, 3))
-        arrays = {"positions": concat(emitted), "velocities": concat(emitted_velocity),
-                  "boundary_positions": concat(boundary), "boundary_velocities": concat(boundary_velocity),
-                  "boundary_normals": concat(boundary_normal)}
+        # Every collider is where it was and the last frame was built from the
+        # same sample arrays, all at rest: the worker already holds exactly
+        # these boundaries. Joining, converting and comparing a few hundred
+        # thousand samples to find that out again was most of a frame's export
+        # in a static scene.
+        boundary_parts = tuple(boundary_parts)
+        unchanged = (self.last_boundary_arrays is not None and boundary_parts == self.last_boundary_parts
+                     and all(part[2] for part in boundary_parts))
+        # Some colliders moved and the rest are as the worker has them: send
+        # the moved ones only, as patches into the arrays of the last frame.
+        last_parts, patches = self.last_boundary_parts, None
+        if (not unchanged and self.last_boundary_arrays is not None and last_parts is not None
+                and len(last_parts) == len(boundary_parts)
+                and all(a[0] == b[0] and a[3] == b[3] for a, b in zip(boundary_parts, last_parts))
+                and len(self.last_boundary_arrays[2]) == sum(part[3] for part in boundary_parts)):
+            moved = [index for index, (part, last) in enumerate(zip(boundary_parts, last_parts))
+                     if part[3] and not (part[2] and last[2] and part[1] == last[1])]
+            if moved and sum(boundary_parts[index][3] for index in moved) * 2 < len(self.last_boundary_arrays[0]):
+                offsets = np.cumsum([0] + [part[3] for part in boundary_parts])
+                patches = [[int(offsets[index]), int(boundary_parts[index][3])] for index in moved]
+                sent = [np.ascontiguousarray(np.concatenate([parts[index] for index in moved], axis=0), dtype='<f4')
+                        for parts in (boundary, boundary_velocity, boundary_normal)]
+                position = 0
+                for offset, count in patches:
+                    for kept, part in zip(self.last_boundary_arrays, sent):
+                        kept[offset:offset + count] = part[position:position + count]
+                    position += count
+        self.last_boundary_parts = boundary_parts
+        arrays = {"positions": concat(emitted), "velocities": concat(emitted_velocity)}
+        if patches is not None:
+            arrays.update({"boundary_positions": sent[0], "boundary_velocities": sent[1], "boundary_normals": sent[2]})
+        elif not unchanged:
+            arrays.update({"boundary_positions": concat(boundary), "boundary_velocities": concat(boundary_velocity),
+                           "boundary_normals": concat(boundary_normal)})
         self._budget(len(arrays["positions"]))
-        if len(arrays["boundary_positions"]) > limits(p)[1]:
+        if not unchanged and patches is None and len(arrays["boundary_positions"]) > limits(p)[1]:
             raise RuntimeError(_over(p, "Combined collider sampling", "simplify geometry or increase the particle radius"))
         if forces and p.solver == "FLIP":
             raise RuntimeError("The grid solver does not support effectors yet; empty the effector collection or use the particle solver")
-        strays = self._strays(p, (arrays["positions"], arrays["boundary_positions"])) if p.remove_strays else []
+        # Unchanged colliders are already inside the box _strays keeps.
+        strays = self._strays(p, (arrays["positions"],) if unchanged else (arrays["positions"], arrays["boundary_positions"])) if p.remove_strays else []
         if len(forces) > 31 or len(outflows) + len(strays) > 32:
             raise RuntimeError(f"A simulation supports at most 31 effectors and {32 - len(strays)} outflows")
         outflows = outflows + strays
-        boundary_arrays = tuple(np.ascontiguousarray(arrays[name], dtype='<f4')
-                                for name in ('boundary_positions', 'boundary_velocities', 'boundary_normals'))
-        reuse = self.last_boundary_arrays is not None and all(
-            np.array_equal(a, b) for a, b in zip(boundary_arrays, self.last_boundary_arrays))
-        if self.boundary_motion_from_velocity and np.any(boundary_arrays[1] != 0):
-            # Moving endpoints must be supplied for every emission interval.
+        if unchanged:
+            reuse = True
+        elif patches is not None:
             reuse = False
-        self.last_boundary_arrays = boundary_arrays
-        if reuse:
-            del arrays['boundary_positions'], arrays['boundary_velocities'], arrays['boundary_normals']
+        else:
+            boundary_arrays = tuple(np.ascontiguousarray(arrays[name], dtype='<f4')
+                                    for name in ('boundary_positions', 'boundary_velocities', 'boundary_normals'))
+            reuse = self.last_boundary_arrays is not None and all(
+                np.array_equal(a, b) for a, b in zip(boundary_arrays, self.last_boundary_arrays))
+            if self.boundary_motion_from_velocity and np.any(boundary_arrays[1] != 0):
+                # Moving endpoints must be supplied for every emission interval.
+                reuse = False
+            self.last_boundary_arrays = boundary_arrays
+            if reuse:
+                del arrays['boundary_positions'], arrays['boundary_velocities'], arrays['boundary_normals']
         blocks, payload = pack_blocks(arrays)
         fps = self.scene.render.fps / max(self.scene.render.fps_base, 1e-8)
         return {"frame": int(frame), "dt": float(dt), "blocks": blocks,
@@ -865,5 +914,6 @@ class SceneExporter:
                 "emission_batches": emission_batches,
                 "emission_clipped": excluded_count,
                 "reuse_boundaries": reuse,
+                **({"boundary_patches": patches} if patches is not None else {}),
                 "boundary_motion_from_velocity": self.boundary_motion_from_velocity,
                 "outflows": outflows, "forces": forces}, payload

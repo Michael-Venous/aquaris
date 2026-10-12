@@ -116,7 +116,8 @@ class Session:
         header, payload, update = self._prepared or self._export_frame()
         self._prepared = None
         self.phase = "FRAME"
-        self._submit(self._step, header, payload, update, work=True)
+        self._sent = threading.Event()
+        self._submit(self._step, header, payload, update, self._sent, work=True)
 
     def _export_frame(self):
         started = time.perf_counter()
@@ -135,11 +136,17 @@ class Session:
         self.last_settings = settings
         return header, payload, update
 
-    def _step(self, header, payload, update):
+    def _step(self, header, payload, update, sent=None):
         started = time.perf_counter()
-        if update is not None:
-            self.bridge.request("update", {"settings": update})
-        response, result = self.bridge.request("frame", header, payload)
+        try:
+            if update is not None:
+                self.bridge.request("update", {"settings": update})
+            if sent is not None:
+                self.bridge.on_sent = sent.set
+            response, result = self.bridge.request("frame", header, payload)
+        finally:
+            if sent is not None:
+                sent.set()
         response["worker_ms"] = (time.perf_counter() - started) * 1000
         response["export_ms"] = self.export_ms
         response["frame"] = header["frame"]
@@ -202,10 +209,31 @@ class Session:
                         {key: result.get(key) for key in ("device", "backend", "protocol")}, ensure_ascii=False)
                 elif self.phase == "FRAME":
                     self.last_response = result[0]
-                    display.apply(self.scene, self.domain, *result)
                     if self.bake and self.frame >= self.last_frame:
                         self.stopping = True
                     self.frame += 1
+                    # Start the next frame before showing this one, so the
+                    # worker solves it while Blender takes in the mesh instead
+                    # of waiting for that. The order the scene and the liquid
+                    # are seen in is unchanged: the scene was already set to
+                    # the next frame directly after each apply.
+                    requested = False
+                    if not self.stopping and not self.paused:
+                        try:
+                            self._request_frame()
+                            requested = True
+                            # Blender's mesh writes hold the interpreter lock, so
+                            # the request would otherwise sit unsent on its thread
+                            # until they finish. Wait for it to leave first.
+                            self._sent.wait(0.1)
+                        except Exception as exc:
+                            if self.error is None:
+                                self.error = str(exc)
+                            self.domain.fumaris_liquid.last_error = self.error
+                            self.request_stop()
+                    display.apply(self.scene, self.domain, *result)
+                    if requested:
+                        return True
                 elif self.phase == "CLOSING":
                     self.executor.shutdown(wait=False)
                     if self.error:
