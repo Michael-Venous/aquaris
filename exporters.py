@@ -528,6 +528,8 @@ class SceneExporter:
         previous = self.previous.get(history_key)
         old_world = previous[0] if previous is not None and len(previous[0]) == len(world) and np.array_equal(previous[2], triangles) else None
         points, velocities, normals = [], [], []
+        # A mirrored object (negative scale) reverses the winding of its world-space faces.
+        facing = -1.0 if np.linalg.det(np.asarray(matrix)[:3, :3]) < 0 else 1.0
         for triangle in triangles:
             a, b, c = world[triangle]
             edge_length = float(np.linalg.norm(b - a))
@@ -574,7 +576,7 @@ class SceneExporter:
                 velocity = np.zeros_like(positions)
             points.append(positions)
             velocities.append(velocity)
-            normals.append(np.broadcast_to(normal / normal_length, positions.shape))
+            normals.append(np.broadcast_to(facing * normal / normal_length, positions.shape))
         # Shared-edge samples are intentionally deduplicated.
         points = np.concatenate(points) if points else np.empty((0, 3))
         velocities = np.concatenate(velocities) if velocities else np.empty((0, 3))
@@ -776,6 +778,8 @@ class SceneExporter:
         self._budget(len(arrays["positions"]))
         if len(arrays["boundary_positions"]) > limits(p)[1]:
             raise RuntimeError(_over(p, "Combined collider sampling", "simplify geometry or increase the particle radius"))
+        if forces and p.solver == "FLIP":
+            raise RuntimeError("The grid solver does not support effectors yet; empty the effector collection or use the particle solver")
         if len(forces) > 31 or len(outflows) > 32:
             raise RuntimeError("A simulation supports at most 31 effectors and 32 outflows")
         boundary_arrays = tuple(np.ascontiguousarray(arrays[name], dtype='<f4')

@@ -557,6 +557,8 @@ def apply(scene, domain, header, payload):
         p.status += f" · {header['emission_clipped']:,} source samples excluded by solids"
     diagnostics = header.get("diagnostics", {})
     p.runtime_warning = ""
+    if header.get("mesh_fallback"):
+        p.runtime_warning = "GPU mesher could not take this frame and Fast was used: " + str(header["mesh_fallback"])[:160]
     if diagnostics.get("viscosity_status") == 2:
         p.runtime_warning = "Implicit viscosity encountered a numerical failure; lower viscosity or increase particle resolution"
     elif diagnostics.get("viscosity_status") == 3 and diagnostics.get("viscosity_residual", 0) > p.viscosity_tolerance:

@@ -180,8 +180,10 @@ def _draw(layout, context):
         box = _section(layout, "whitewater", "Foam, Spray and Bubbles", closed=True)
         if box is not None:
             box.prop(p, "whitewater")
+            if p.solver == "FLIP":
+                box.label(text="The grid solver makes no whitewater yet", icon="INFO")
             foam = box.column()
-            foam.enabled = p.whitewater
+            foam.enabled = p.whitewater and p.solver == "PBF"
             for name in ("whitewater_generation", "whitewater_energy_min", "whitewater_energy_max",
                          "whitewater_lifetime_min", "whitewater_lifetime_max", "whitewater_buoyancy", "whitewater_drag"):
                 foam.prop(p, name)

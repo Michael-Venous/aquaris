@@ -39,11 +39,13 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_object: PointerProperty(type=bpy.types.Object)
     particle_object: PointerProperty(type=bpy.types.Object)
     mist_object: PointerProperty(type=bpy.types.Object)
+    # Explicit numbers: Blender stores an enum by number, and an item added
+    # in front would otherwise change what saved files mean.
     solver: EnumProperty(name="Solver", items=[
-        ("PBF", "Particles", "Position-based particle solver. Supports every feature: viscosity, surface tension, whitewater, effectors"),
-        ("FLIP", "Grid (experimental)", "Particles moved by a pressure solve on a grid. Tens of times faster and forms crowns from "
-                                        "solid impacts. No viscosity, surface tension, whitewater or effectors yet; colliders are "
-                                        "treated as thin shells"),
+        ("PBF", "Particles", "Position-based particle solver. Supports every feature: viscosity, surface tension, whitewater, effectors", 0),
+        ("FLIP", "Grid (experimental)", "Particles moved by a pressure solve on a grid. About ten times faster per particle and forms crowns "
+                                        "from solid impacts, at half the detail per particle. No viscosity, surface tension, whitewater or "
+                                        "effectors yet; colliders must be meshes with outward face normals", 1),
     ], default="PBF", description="How the liquid is simulated; restart to change")
     jet_limit: FloatProperty(name="Jet Limit", default=2.0, min=0, max=10, precision=2,
                              description="Grid solver: fastest speed allowed, as a multiple of what the liquid could reach from "
@@ -103,12 +105,14 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                  subtype="DISTANCE", description="Smaller cells give a finer surface; restart to change")
     max_mesh_cells: IntProperty(name="Surface Cell Budget", default=2000000,
                                 min=1000, max=64000000)
+    # Numbered as before the GPU item existed (0.2.12 and earlier files); files
+    # saved by 0.2.13 or 0.2.14 used the order GPU, Fast, Final, Smooth.
     mesh_quality: EnumProperty(name="Mesh Quality", items=[
         ("GPU", "GPU (preview)", "Built on the graphics card in milliseconds for interactive previews and drafts. "
-                                 "Droplets are simple and Droplet Size does not apply; falls back to Fast when a frame is too large for it"),
-        ("FAST", "Fast", "Smooth surface on the requested grid"),
-        ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time"),
-        ("SMOOTH", "Smooth", "Anisotropic reconstruction reduces particle-scale bumps; slower and can join narrow gaps"),
+                                 "Droplets are simple and Droplet Size does not apply; falls back to Fast when a frame is too large for it", 3),
+        ("FAST", "Fast", "Smooth surface on the requested grid", 0),
+        ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time", 1),
+        ("SMOOTH", "Smooth", "Anisotropic reconstruction reduces particle-scale bumps; slower and can join narrow gaps", 2),
     ], default="FINAL")
     droplet_scale: FloatProperty(name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
                                  description="Size of detached droplets of one to three particles in the surface mesh. "
