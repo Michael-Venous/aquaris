@@ -193,9 +193,9 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
 
 
 QUALITY_LEVELS = {
-    # Two pressure iterations halve the solve and a cell of two radii meshes
-    # several times faster; splashes are softer (about a third of the crown).
-    "DRAFT": {"iterations": 2, "mesh_quality": "FAST", "mesh_cell_relative": True, "mesh_cell_factor": 2.0},
+    # Two pressure iterations halve the particle solve (splashes are softer,
+    # about a third of the crown) and the surface is built on the GPU.
+    "DRAFT": {"iterations": 2, "mesh_quality": "GPU", "mesh_cell_relative": True, "mesh_cell_factor": 1.0},
     "FINAL": {"iterations": 6, "mesh_quality": "SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0},
 }
 
@@ -204,7 +204,7 @@ class LIQUID_OT_quality(bpy.types.Operator):
     bl_idname = "fumaris_liquid.quality"
     bl_label = "Set Liquid Quality"
     bl_description = ("Set the settings that trade speed for quality in one step. Draft: 2 pressure iterations, "
-                      "Fast mesh at a cell of 2 radii. Final: 6 iterations, Smooth mesh at 1 radius. "
+                      "surface built on the GPU. Final: 6 iterations, Smooth mesh. "
                       "Each setting stays editable afterwards")
     bl_options = {"REGISTER", "UNDO"}
     level: bpy.props.EnumProperty(items=[("DRAFT", "Draft", "Fast to simulate and mesh, softer splashes"),

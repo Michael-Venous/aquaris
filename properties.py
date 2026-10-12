@@ -100,6 +100,8 @@ class LiquidProperties(bpy.types.PropertyGroup):
     max_mesh_cells: IntProperty(name="Surface Cell Budget", default=2000000,
                                 min=1000, max=64000000)
     mesh_quality: EnumProperty(name="Mesh Quality", items=[
+        ("GPU", "GPU (preview)", "Built on the graphics card in milliseconds for interactive previews and drafts. "
+                                 "Droplets are simple and Droplet Size does not apply; falls back to Fast when a frame is too large for it"),
         ("FAST", "Fast", "Smooth surface on the requested grid"),
         ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time"),
         ("SMOOTH", "Smooth", "Anisotropic reconstruction reduces particle-scale bumps; slower and can join narrow gaps"),

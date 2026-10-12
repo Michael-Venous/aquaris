@@ -1,5 +1,7 @@
 """Fumaris-style participant collections, transport and bake controls."""
 
+import os
+
 import bpy
 import textwrap
 
@@ -161,7 +163,10 @@ def _draw(layout, context):
         if box is not None:
             structural = box.column()
             structural.enabled = running is None
-            structural.prop(p, "solver")
+            # The grid solver is offered only on request until its colliders are
+            # reliable: set AQUARIS_EXPERIMENTAL=1 before starting Blender.
+            if os.environ.get("AQUARIS_EXPERIMENTAL") or p.solver != "PBF":
+                structural.prop(p, "solver")
             if p.solver == "FLIP":
                 note = box.column(align=True)
                 note.label(text="Grid solver: experimental", icon="INFO")

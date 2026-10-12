@@ -130,10 +130,12 @@ memory.
 
 The **Draft** and **Final** buttons under the domain's status set the settings
 that trade speed for quality in one step, and light up when the current
-settings match. Draft: 2 pressure iterations, Fast mesh, surface cell of 2
-particle radii; the solve takes about half as long and meshing several times
-less, splashes are softer and the surface coarser. Final: 6 iterations, Smooth
-mesh, cell of 1 radius. Every setting stays editable afterwards.
+settings match. Draft: 2 pressure iterations and the **GPU (preview)** mesh
+quality, which builds the surface on the graphics card in milliseconds (about
+10 ms for 200,000 particles on an RTX 4060 Ti, against a second on the CPU);
+its droplets are simple, Droplet Size does not apply, and a frame too large for
+it is meshed with Fast instead. Final: 6 iterations and the Smooth mesh. Every
+setting stays editable afterwards.
 
 ## Limits and surface detail
 
