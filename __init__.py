@@ -1,4 +1,4 @@
-"""Aquaris Blender integration. The native worker simulates on a grid (PIC/FLIP) in Vulkan."""
+"""Aquaris Blender integration. The native worker simulates on a grid in Vulkan compute."""
 
 bl_info = {
     "name": "Aquaris",

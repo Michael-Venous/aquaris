@@ -1,25 +1,45 @@
-# Aquaris 0.1.3 development build
+# Aquaris development build
 
-Aquaris runs the MIT-licensed Nebula liquid solver in a separate Vulkan
-worker. Its scene properties, simulation process and caches are independent of
-the Fumaris smoke/fire addon. This is an early implementation; platform and
-physical accuracy claims depend on the validation record shipped with the build.
+Aquaris simulates liquid as particles moved by a pressure solve on a grid, in
+its own Vulkan worker process. Its scene properties, simulation process and
+caches are independent of the Fumaris smoke/fire addon. This is an early
+implementation; platform and physical accuracy claims depend on the validation
+record shipped with the build.
+
+## What this version does and does not do
+
+It simulates one inviscid liquid (water) with mesh colliders, initial and
+continuous emitters, outflows and gravity, plays small scenes live, bakes
+larger ones to a cache, and builds a renderable surface with motion vectors.
+
+It does **not** simulate viscosity, surface tension, whitewater (foam, spray,
+bubbles) or force fields (effectors). Versions up to 0.2.18 offered these on a
+second, position-based particle solver. That solver was removed on 2026-10-12
+and the grid solver is the only one; the four features are to return on it,
+in the order whitewater, surface tension, viscosity, forces.
+
+Scenes and caches from earlier versions still open. A scene that used the
+particle solver now simulates on the grid solver and looks different; its
+removed settings are ignored. A cache baked earlier plays back as it was
+baked, including its whitewater (see Output, recording and rendering). A scene
+with an enabled effector does not start until the effector is disabled or
+removed.
 
 ## Start a simulation
 
 Open **Physics > Aquaris** or the viewport's **Aquaris** sidebar.
 **Quick Setup** creates an isolated setup at the 3D cursor. The three
-**real-time** setups (**Splash**, **Dam Break**, **Pour**) use the grid solver
-with 15,000 to 25,000 particles and the GPU surface, sized to play back live
-with a surface on a mid-range graphics card; Splash, a ball dropped into a
-pool, is the default. The three **particles** setups (**Dam Break**, **Pouring
-Water**, **Viscous Pour**) use the particle solver with whitewater and are
-meant to be baked. Existing scene objects stay in place. Each setup creates a domain
+**real-time** setups (**Splash**, **Dam Break**, **Pour**) have 15,000 to
+25,000 particles and the GPU surface, sized to play back live with a surface
+on a mid-range graphics card; Splash, a ball dropped into a pool, is the
+default. **Dam Break (detailed)** and **Pour (detailed)** are the same two
+scenes at a particle radius of 0.02 (about 50,000 particles) with the Smooth
+mesh, and are meant to be baked. Existing scene objects stay in place. Each setup creates a domain
 settings object, participant collections, a five-solid basin and three output
 objects. Emitters appear as wireframes and are hidden from final rendering.
 
 Select the domain or one of its participants, then **Play**. The selected
-participant's settings appear first. Simulation, whitewater, allocation, display
+participant's settings appear first. Simulation, allocation, display
 and cache controls are collapsible; no domain-object dropdown is required.
 When a participant belongs to multiple simulations, select the desired domain.
 The working product name is Aquaris; existing extension IDs and caches retain
@@ -42,8 +62,10 @@ Particle radius sets the liquid sampling spacing (twice the radius). Smaller
 values produce more particles and more work. Surface cell size controls output
 mesh detail independently. Radius, particle budgets, region and mesh sizing
 should be chosen before starting; their UI is disabled while running. Gravity,
-pressure iterations, substeps, speed, viscosity, tension and whitewater can be
-adjusted while playing. Gravity is entered in metres per second squared and is
+Substeps, Simulation Speed and Jet Limit can be adjusted while playing.
+**Substeps** is the fewest steps the solver takes per frame; it adds more by
+itself when the liquid or a collider moves fast, so 1 is enough for most
+scenes. Gravity is entered in metres per second squared and is
 converted through the scene's unit scale; positions/radii follow Blender units.
 
 ## Participants
@@ -125,45 +147,52 @@ including volume and point/particle sources. Vertex groups are not sampled.
 
 Colliders use evaluated mesh surfaces, including modifiers and deforming
 animation. Triangles receive approximately isotropic samples spaced at one
-particle radius, with their current surface velocity. This sampled boundary has
-an effective contact offset of about two particle radii and is not an exact
-triangle collision representation. Thin sheets, sharp edges, rapidly moving
-geometry and dense boundaries need careful testing at the chosen radius.
+particle radius, with their current surface velocity and the outward normal of
+their face: the solid is behind each sample. Colliders must therefore be
+meshes whose face normals point out of the solid towards the liquid (Blender's
+default for boxes and spheres). The solver resolves a collider on its grid,
+whose cell is two and a half particle radii, so this is not an exact triangle
+collision representation. Thin sheets, sharp edges and rapidly moving geometry
+need careful testing at the chosen radius.
 
-Effectors support localized force, local-Z wind, local-Z vortex and turbulence.
+**Effectors (force fields) are not available in this version.** The Effector
+role and the domain's effector collection remain so that scenes from earlier
+versions load; a simulation with an enabled effector in that collection does
+not start and reports it. Disable the effector or empty the collection.
+
 Outflows remove particles inside their evaluated **world-aligned bounding box**.
-The runtime supports 31 effectors and 32 outflows, five of which (six without
+The runtime supports 32 outflows, five of which (six without
 gravity) are taken by Remove Escaped Liquid while it is on. Collider surfaces are sampled
 up to 4,000,000 samples; finer particle radii need more of them and more GPU
 memory.
 
-## Solver
+## The solver
 
-**Solver** chooses how the liquid is simulated; restart to change.
+The liquid is carried by particles two radii apart. Each step transfers their
+velocity to a grid whose cell is two and a half particle radii, makes it
+divergence-free there with a pressure solve, and moves the particles with the
+result. The solver takes a few steps a frame however fast the liquid moves;
+15,000 to 25,000 particles play back live on a mid-range graphics card, and
+about 100,000 take roughly 100 ms a frame on an RTX 4060 Ti.
 
-**Particles** is the position-based solver every other part of this document
-describes. It supports viscosity, surface tension, whitewater and effectors.
+The grid is a window fitted to the liquid before every step. There is no
+fixed domain box and no wall at the edge of the region: liquid is held only by
+collider meshes.
 
-**Grid (experimental)** moves the same particles with a pressure solve on a
-grid whose cell is two and a half particle radii. It is several times faster
-per particle (97,000 particles: about 100 ms a frame on an RTX 4060 Ti, where
-the particle solver takes 318 ms for 188,000) and takes a few steps a frame
-however fast the liquid moves; 15,000 to 25,000 particles play back live.
-At the same Particle Radius it resolves somewhat less detail than the particle
-solver: splash rims are thicker, so lower the radius for comparable detail.
-It has no viscosity, surface tension, whitewater or effectors yet; those
-settings are greyed. Colliders must be meshes whose face normals point out of
-the solid towards the liquid (Blender's default for boxes and spheres).
-Liquid squeezed into a narrow gap, such as the dam-break preset's block beside
-its walls, is thrown upward more strongly than with the particle solver;
-**Jet Limit** caps speed at a multiple of what the liquid's energy allows.
+Liquid squeezed into a narrow gap, such as a block of liquid released beside
+a wall, is thrown upward more strongly than real liquid would be, and the
+fastest droplets of an impact overshoot. **Jet Limit** (Simulation, default 2)
+caps speed at that multiple of what the liquid could reach from its fall and
+the speed it was emitted or pushed at; lower values calm thin jets, 0 leaves
+them unlimited. In a dam break at the default, single droplets still reach
+about twice the speed and several times the height a real one would.
 
 ## Draft and Final
 
-The **Draft** and **Final** buttons under the domain's status set the settings
-that trade speed for quality in one step, and light up when the current
-settings match. Draft: 2 pressure iterations, a surface cell of 1.5 radii and
-the **GPU Smooth (preview)** mesh quality, which builds the surface on the
+The **Draft** and **Final** buttons under the domain's status set the surface
+settings that trade speed for quality in one step, and light up when the
+current settings match. Neither changes the simulation. Draft: a surface cell
+of 1.5 radii and the **GPU Smooth (preview)** mesh quality, which builds the surface on the
 graphics card in milliseconds (about 25 ms for 200,000 particles on an RTX
 4060 Ti, against a second or more on the CPU) with the stretched kernels of
 Smooth: resting liquid is flat and splashes stay connected sheets. **GPU Fast
@@ -171,8 +200,8 @@ Smooth: resting liquid is flat and splashes stay connected sheets. **GPU Fast
 Both draw droplets as simple shapes, ignore Droplet Size, and hand a frame
 that does not fit them to Fast with a warning; GPU Smooth needs a surface cell
 of at least half a particle radius and encloses a few percent more volume than
-Smooth in splashing liquid. Final: 6 iterations and the Smooth mesh. Every
-setting stays editable afterwards.
+Smooth in splashing liquid. Final: the Smooth mesh at a surface cell of one
+radius. Every setting stays editable afterwards.
 
 The surface settings (cell, Mesh Quality, Droplet Size, Surface Smoothing,
 motion vectors) can be changed during a run. They apply from the next frame;
@@ -189,8 +218,7 @@ particle-only output). Nothing is reserved in advance; memory is taken as the
 simulation grows, so lowering the particle radius simply works until the GPU
 runs out, which is reported. Turn it off to use the **Particle Budget**,
 **Collider Sample Budget** and **Surface Cell Budget** as early stops for a
-runaway setup. The Whitewater Budget is always fixed, because its memory is
-reserved when the solver starts.
+runaway setup.
 
 With **Follow Particle Radius** (on by default) the surface cell is
 **Surface Cell** times the particle radius, so the surface keeps its level of
@@ -203,26 +231,30 @@ now follow the radius at a factor of 1 unless this is turned off.
 ## Output, recording and rendering
 
 The **Surface** object is a normal Blender mesh with an editable water material.
-**Whitewater** stores `velocity` and integer `whitewater_type` attributes:
-1 spray, 2 foam, 3 bubble. Its editable Geometry Nodes graph turns them into a
-point cloud of small spheres, which Cycles blurs along `velocity` when Motion
-Blur is on, so spray in a fast fall streaks with the water. An unedited
-instanced-sphere graph saved by 0.2.8 or earlier is converted in place the next
-time a frame is shown; an edited one is left as it is. **Particle Size** scales
-the spheres; the default of 2 reads as
-denser foam than the size used before 0.2.8 (set 1 for the old look).
-**Mist** adds a soft white scattering volume built from spray and foam, for
-falls and heavy spray: 2-4 with **Mist Radius** 4 veils a waterfall without
-hiding it, while much higher values turn into cotton-like blobs around single
-particles. Mist is a separate **Mist** object that shares the whitewater
-points, is created the first time Mist is above zero, appears in Surface
-display and in renders, and needs Cycles **Light Paths > Volume** bounces above
-zero (8 or more) to render white rather than grey. Both settings change the
-look of an existing bake at once. **Particles** is a diagnostic display with a
-velocity attribute.
-Switching **Display** changes surface/particle visibility. Whitewater remains
-independently controlled. All output objects are tagged with their domain owner;
-changing another domain does not rewrite them.
+**Particles** is a diagnostic display with a velocity attribute.
+Switching **Display** changes surface/particle visibility. All output objects
+are tagged with their domain owner; changing another domain does not rewrite
+them.
+
+This version generates no whitewater, and the **Whitewater** output object
+stays empty in a new simulation. A cache baked by an earlier version keeps its
+foam, spray and bubbles, and **Whitewater from Earlier Caches** in the panel
+controls how they are shown: **Show Whitewater** switches them on or off (the
+Quick Setups leave it off), and the two look settings change an existing
+cache at once, without rebaking. The points carry `velocity` and an integer
+`whitewater_type` (1 spray, 2 foam, 3 bubble); an editable Geometry Nodes
+graph turns them into a point cloud of small spheres, which Cycles blurs along
+`velocity` when Motion Blur is on. An unedited instanced-sphere graph saved by
+0.2.8 or earlier is converted in place the next time a frame is shown; an
+edited one is left as it is. **Particle Size** scales the spheres; the default
+of 2 reads as denser foam than the size used before 0.2.8 (set 1 for the old
+look). **Mist** adds a soft white scattering volume built from spray and foam:
+2-4 with **Mist Radius** 4 veils a waterfall without hiding it, while much
+higher values turn into cotton-like blobs around single particles. Mist is a
+separate **Mist** object that shares the whitewater points, is created the
+first time Mist is above zero, appears in Surface display and in renders, and
+needs Cycles **Light Paths > Volume** bounces above zero (8 or more) to render
+white rather than grey.
 
 Choose a cache directory and slot. Enable **Record Preview** before Play to save
 every completed displayed frame. **Bake** runs the chosen start/end frame range.
@@ -256,48 +288,37 @@ fresh simulation, stop and Play again; initial-fill sources are seeded again.
 
 ## Current fidelity and feature boundaries
 
-**Pressure Speed Limit** (Simulation, default 40 m/s²) bounds how fast the
-pressure solve may push a particle beyond the motion around it. Pressure may
-stop or turn a particle freely, and may speed it up to a speed that several of
-its own neighbours already have, liquid or collider: that is momentum being handed on, as in
-a splash crown, a jet striking a pool or liquid thrown by a paddle. Only speed
-that nothing next to the particle has is limited to this rate. Without it,
-liquid squeezed into a narrow gap — for example between a collapsing column and
-a nearby wall — shot individual droplets out at several times the fastest
-physically possible speed. The value is stated for Earth gravity and rises in
-proportion under stronger gravity. Set it to 0 to disable the limit.
+The liquid has no viscosity and no surface tension: it behaves like water at
+the scale of the scene, splashes break up into droplets of single particles,
+and thick or clinging liquids cannot be made. Nothing generates foam, spray or
+bubbles. There are no force fields. Each of these was a feature of the removed
+particle solver (see What this version does and does not do).
 
-Nebula uses position-based fluids. **Kinematic Viscosity** is the implicit
-viscosity coefficient in square metres per second; it is converted through the
-scene's squared unit scale. **Velocity Smoothing** is separate bounded XSPH
-smoothing (0–1). The viscosity iterations/tolerance control convergence and
-boundary viscosity controls coupling to sampled moving solids. **Surface
-Tension** is a solver tuning coefficient, rather than a calibrated SI material
-property. Presets provide visual starting points. Volume conservation,
-convergence and high-viscosity behavior require further qualification before
-production guarantees.
+Known limits of the solver, measured by its validation suite
+(`tools/tests/flip_validation_gpu_test.cpp` in the source archive) and being
+worked on: liquid meeting a wall or squeezed into a gap is thrown higher and
+faster than it should be (see Jet Limit), and the liquid's volume is not
+conserved exactly over a long run.
 
-The runtime exposes convergence diagnostics. If viscosity reaches its iteration
-limit above tolerance, the panel shows a warning; raise the iteration limit or
-reduce the timestep. Numerical failures stop the worker with an error. A warning
-clears after a later converged frame. Copy Diagnostics includes the current
-warning, device, Blender version and serialized settings.
+Copy Diagnostics includes the current warning, device, Blender version and
+serialized settings.
 
-The liquid solver and whitewater run on the GPU; the current surface
-reconstruction and transfer to Blender run on the CPU. Scene sampling likewise
-runs on Blender's main thread. Large scenes may pause the UI during sampling.
+The liquid solver runs on the GPU, as do the two **GPU** mesh qualities. The
+Fast, Final and Smooth surface reconstructions and the transfer to Blender run
+on the CPU. Scene sampling runs on Blender's main thread; large scenes may
+pause the UI during sampling.
 No fluid-driven rigid body, multi-liquid phase, ocean-spectrum tool or
 viscoelastic material is exposed in this build. Volume input converts a single
 isosurface; it does not import VDB velocity grids or multiple liquid phases.
 
-Current Linux qualification includes a 40-frame closed-basin dam break with
-whitewater, three 48-frame pours at kinematic viscosities 0/0.05/0.5, cache
-reopening, Alembic export/import and paused live viscosity updates. The pours
-converged below 0.001 residual on an RTX 3090 Ti. These coarse box-source tests
-show the implemented behavior; they are not a calibrated fixed-flow experiment.
-Reservoir overlap filtering can change accepted particle count with viscosity.
-Coarse sources can produce visibly layered inflow; smaller particle radius and
-round source shapes give more detail at increased cost.
+The grid-only build was checked on Linux with an Intel ARL GPU on 2026-10-12:
+the two detailed and three real-time setups run and keep their liquid in the
+basin, bakes are written and play back, pause and resume hold and continue
+the same state, and a cache with whitewater in the earlier format plays back
+with its look controls. It has not been run in an interactive viewport, on
+Windows or on macOS. Coarse sources can produce visibly layered inflow;
+smaller particle radius and round source shapes give more detail at increased
+cost.
 
 The source qualification also writes actual small VDB files with Blender's
 MeshToVolume modifier, fills two animated frames through native VolumeToMesh,
@@ -314,10 +335,10 @@ which makes fine splashes look like beads; lower values (0.3–0.5) draw them as
 finer spray. New domains start at 0.5. The simulation is unaffected, and connected liquid is never scaled.
 
 **Surface Smoothing** filters the finished surface mesh to remove the
-particle-scale dimples that make calm or viscous liquid look hammered. Each
+particle-scale dimples that make calm liquid look hammered. Each
 connected body's volume is restored afterwards and vertices move at most about
 one and a half particle radii at full strength, so thin sheets soften rather than
-disappear. New domains start at 0.4 and the Viscous preset at 0.9; 0 gives the
+disappear. New domains start at 0.4 and the Quick Setups at 1.0; 0 gives the
 unfiltered reconstruction.
 
 **Surface Motion Vectors** stores a velocity for every surface vertex,
@@ -335,7 +356,8 @@ compositor) the nearer cached frame is shown.
 Use **Surface and Display > Display > GPU Surface** for fast iteration. It is
 the default for new domains; existing saved display selections remain compatible.
 This viewport filters particle depth on the GPU and reconstructs smooth surface
-normals, with thickness, water shading and depth-tested whitewater. It avoids CPU
+normals, with water shading and, for a cache that has some, depth-tested
+whitewater. It avoids CPU
 meshing and Blender geometry updates on unrecorded frames. **Preview Quality**
 adjusts resolution/filtering. Transparency and studio reflections are simplified;
 scene refraction and final material graphs require **Surface** output. An unrecorded
@@ -351,8 +373,8 @@ closely spaced sparse features; it does not change the simulation or correct
 underdense fluid. Fast and Final remain available for finer gap preservation.
 Choose the quality before starting a simulation, or before switching a stopped
 GPU Surface preview to Surface. **Record Preview** and
-**Bake** always save the full surface, even when GPU Surface is selected. Recorded
-surface/whitewater remain enabled for final rendering, and cached GPU previews
+**Bake** always save the full surface, even when GPU Surface is selected. The
+recorded surface remains enabled for final rendering, and cached GPU previews
 reopen without scrubbing.
 
 Surface reconstruction preserves closed topology when recovering very small
@@ -366,10 +388,8 @@ on NVIDIA under Linux. This does not qualify Metal, macOS or Windows.
 Static collider samples are retained by the worker until geometry or velocity
 changes (including collider removal). Animated/evaluated geometry is still
 checked each frame. Box, sphere and cylinder fills and collider sampling use array
-operations. Saved solver settings remain compatible; new presets use finer
-particles and stronger pressure convergence. Continuous sources emit at exact
+operations. Continuous sources emit at exact
 subframe ticks with advected/staggered sampling to avoid pulse-shaped layers.
-Whitewater uses normalized local motion; still water does not create a spray cloud.
 Preview polling no
 longer imposes a fixed 20 ms wait; it redraws on results rather than every poll.
 
