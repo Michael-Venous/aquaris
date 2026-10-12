@@ -110,8 +110,11 @@ class LiquidProperties(bpy.types.PropertyGroup):
     # Numbered as before the GPU item existed (0.2.12 and earlier files); files
     # saved by 0.2.13 or 0.2.14 used the order GPU, Fast, Final, Smooth.
     mesh_quality: EnumProperty(name="Mesh Quality", items=[
-        ("GPU", "GPU (preview)", "Built on the graphics card in milliseconds for interactive previews and drafts. "
-                                 "Droplets are simple and Droplet Size does not apply; falls back to Fast when a frame is too large for it", 3),
+        ("GPU_SMOOTH", "GPU Smooth (preview)", "Built on the graphics card in milliseconds with the stretched kernels of Smooth: resting liquid is flat, "
+                                               "splashes stay connected sheets. Droplets are simple and Droplet Size does not apply; "
+                                               "needs a surface cell of at least half a particle radius and falls back to Fast when a frame does not fit", 4),
+        ("GPU", "GPU Fast (preview)", "Built on the graphics card in milliseconds on round kernels: shows every particle-scale bump. "
+                                      "Droplets are simple and Droplet Size does not apply; falls back to Fast when a frame is too large for it", 3),
         ("FAST", "Fast", "Smooth surface on the requested grid", 0),
         ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time", 1),
         ("SMOOTH", "Smooth", "Anisotropic reconstruction reduces particle-scale bumps; slower and can join narrow gaps", 2),

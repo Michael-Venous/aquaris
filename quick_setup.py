@@ -70,10 +70,10 @@ def _realtime(p):
     p.solver = "FLIP"
     p.particle_radius = 0.028
     p.display = "SURFACE"
-    p.mesh_quality = "GPU"
+    p.mesh_quality = "GPU_SMOOTH"
     p.mesh_cell_relative = True
     p.mesh_cell_factor = 1.0
-    p.surface_smoothing = 0.6
+    p.surface_smoothing = 1.0
     p.jet_limit = 2.0
     p.substeps = 1
     # The grid solver makes no whitewater; leave the switch off so a later

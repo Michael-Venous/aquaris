@@ -163,10 +163,15 @@ its walls, is thrown upward more strongly than with the particle solver;
 The **Draft** and **Final** buttons under the domain's status set the settings
 that trade speed for quality in one step, and light up when the current
 settings match. Draft: 2 pressure iterations, a surface cell of 1.5 radii and
-the **GPU (preview)** mesh quality, which builds the surface on the graphics card in milliseconds (about
-10 ms for 200,000 particles on an RTX 4060 Ti, against a second on the CPU);
-its droplets are simple, Droplet Size does not apply, and a frame too large for
-it is meshed with Fast instead. Final: 6 iterations and the Smooth mesh. Every
+the **GPU Smooth (preview)** mesh quality, which builds the surface on the
+graphics card in milliseconds (about 25 ms for 200,000 particles on an RTX
+4060 Ti, against a second or more on the CPU) with the stretched kernels of
+Smooth: resting liquid is flat and splashes stay connected sheets. **GPU Fast
+(preview)** uses round kernels instead and shows every particle-scale bump.
+Both draw droplets as simple shapes, ignore Droplet Size, and hand a frame
+that does not fit them to Fast with a warning; GPU Smooth needs a surface cell
+of at least half a particle radius and encloses a few percent more volume than
+Smooth in splashing liquid. Final: 6 iterations and the Smooth mesh. Every
 setting stays editable afterwards.
 
 ## Limits and surface detail
