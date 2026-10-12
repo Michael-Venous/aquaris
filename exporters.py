@@ -539,67 +539,74 @@ class SceneExporter:
             self.boundary_normals[history_key] = facing * normal[owner]
             self.boundary_cache[history_key] = (world, triangles, spacing, result)
             return result, velocity
-        points, velocities, normals, owners, kept_weights, total = [], [], [], [], [], 0
-        for index, triangle in enumerate(triangles):
-            a, b, c = world[triangle]
-            edge_length = float(np.linalg.norm(b - a))
-            normal = np.cross(b - a, c - a)
-            normal_length = float(np.linalg.norm(normal))
-            if edge_length < 1e-10 or normal_length < 1e-12:
-                continue
-            tangent = (b - a) / edge_length
-            bitangent = np.cross(normal / normal_length, tangent)
-            cx, cy = float(np.dot(c - a, tangent)), float(np.dot(c - a, bitangent))
-            # Vectorized barycentric raster and motion replaces a Python loop
-            # per sample. Sample positions/order match the reference lattice.
-            start_x, end_x = min(0, cx), max(edge_length, cx)
-            xs = np.arange(start_x + spacing * 0.5, end_x, spacing)
-            ys = np.arange(spacing * 0.5, cy, spacing)
-            if len(xs) * len(ys) > 2000000:
-                raise RuntimeError(f"{obj.name}: collider sampling exceeds its candidate budget; raise radius")
-            xx, yy = np.meshgrid(xs, ys)
-            wc = yy.ravel() / cy
-            wb = (xx.ravel() - wc * cx) / edge_length
-            weights = np.column_stack((1 - wb - wc, wb, wc))
-            weight_parts = [weights[np.all(weights >= 0, axis=1)]]
-            for first, second in ((0, 1), (1, 2), (2, 0)):
-                segments = max(1, math.ceil(np.linalg.norm(world[triangle[first]] - world[triangle[second]]) / spacing))
-                if segments > limits(self.domain.fumaris_liquid)[1]:
-                    raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider edge sampling", "increase the particle radius"))
-                fractions = np.linspace(0, 1, segments + 1)
-                edge_weights = np.zeros((segments + 1, 3))
-                edge_weights[:, first], edge_weights[:, second] = 1 - fractions, fractions
-                weight_parts.append(edge_weights)
-            weights = np.concatenate(weight_parts)
-            total += len(weights)
-            if total > limits(self.domain.fumaris_liquid)[1]:
-                raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider sampling", "simplify the mesh or increase the particle radius"))
-            positions = weights @ world[triangle]
-            owners.append(np.full(len(weights), index, dtype=np.int64))
-            kept_weights.append(weights)
-            if old_world is not None:
-                velocity = (positions - weights @ old_world[triangle]) / self.dt
-            elif previous is not None and not self.boundary_motion_from_velocity:
-                # Retain the old transform fallback only for legacy timelines.
-                local = (positions - matrix[:3, 3]) @ np.linalg.inv(matrix[:3, :3]).T
-                velocity = (positions - (local @ previous[1][:3, :3].T + previous[1][:3, 3])) / self.dt
-            else:
-                # Newly introduced or incompatible topology has no proven prior
-                # surface correspondence. Place it at the current pose.
-                velocity = np.zeros_like(positions)
-            points.append(positions)
-            velocities.append(velocity)
-            normals.append(np.broadcast_to(facing * normal / normal_length, positions.shape))
+        # Every triangle gets a lattice of samples `spacing` apart in its own
+        # plane (first edge along x) plus samples along its three edges. All
+        # triangles are rastered together: one Python loop per triangle took
+        # seconds for a mesh of tens of thousands of faces.
+        limit = limits(self.domain.fumaris_liquid)[1]
+        a, ab, ac = corners[:, 0], corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]
+        edge_length = np.linalg.norm(ab, axis=1)
+        normal = np.cross(ab, ac)
+        normal_length = np.linalg.norm(normal, axis=1)
+        valid = (edge_length >= 1e-10) & (normal_length >= 1e-12)
+        safe_edge, safe_normal = np.where(valid, edge_length, 1.0), np.where(valid, normal_length, 1.0)
+        tangent = ab / safe_edge[:, None]
+        bitangent = np.cross(normal / safe_normal[:, None], tangent)
+        cx, cy = np.einsum('ij,ij->i', ac, tangent), np.einsum('ij,ij->i', ac, bitangent)
+        cy = np.where(valid, cy, 1.0)
+        first_x = np.minimum(0.0, cx) + spacing * 0.5
+        columns = np.where(valid, np.maximum(np.ceil((np.maximum(edge_length, cx) - first_x) / spacing), 0), 0).astype(np.int64)
+        rows = np.where(valid, np.maximum(np.ceil((cy - spacing * 0.5) / spacing), 0), 0).astype(np.int64)
+        cells = columns * rows
+        if len(cells) and cells.max() > 2000000:
+            raise RuntimeError(f"{obj.name}: collider sampling exceeds its candidate budget; raise radius")
+        if int(cells.sum()) > max(8 * limit, 16000000):
+            raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider sampling", "simplify the mesh or increase the particle radius"))
+        inside = np.repeat(np.arange(len(triangles)), cells)
+        within = np.arange(len(inside)) - np.repeat(np.cumsum(cells) - cells, cells)
+        x = first_x[inside] + (within % np.maximum(columns, 1)[inside]) * spacing
+        y = spacing * 0.5 + (within // np.maximum(columns, 1)[inside]) * spacing
+        wc = y / cy[inside]
+        wb = (x - wc * cx[inside]) / safe_edge[inside]
+        lattice_weights = np.column_stack((1 - wb - wc, wb, wc))
+        keep = np.all(lattice_weights >= 0, axis=1)
+        owner_parts, weight_parts, order_parts = [inside[keep]], [lattice_weights[keep]], [inside[keep] * 4]
+        for part, (first, second) in enumerate(((0, 1), (1, 2), (2, 0)), start=1):
+            length = np.linalg.norm(corners[:, first] - corners[:, second], axis=1)
+            segments = np.where(valid, np.maximum(1, np.ceil(length / spacing)), 0).astype(np.int64)
+            if len(segments) and segments.max() > limit:
+                raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider edge sampling", "increase the particle radius"))
+            count = np.where(valid, segments + 1, 0)
+            along = np.repeat(np.arange(len(triangles)), count)
+            step = np.arange(len(along)) - np.repeat(np.cumsum(count) - count, count)
+            fraction = np.where(step == segments[along], 1.0, step * (1.0 / np.maximum(segments, 1)[along]))
+            edge_weights = np.zeros((len(along), 3))
+            edge_weights[:, first], edge_weights[:, second] = 1 - fraction, fraction
+            owner_parts.append(along); weight_parts.append(edge_weights); order_parts.append(along * 4 + part)
+        # Triangle by triangle: its lattice, then its edges, as one loop over triangles produced them.
+        order = np.argsort(np.concatenate(order_parts), kind='stable')
+        owner, weights = np.concatenate(owner_parts)[order], np.concatenate(weight_parts)[order]
+        if len(weights) > limit:
+            raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider sampling", "simplify the mesh or increase the particle radius"))
+        points = np.einsum('nk,nkj->nj', weights, corners[owner]) if len(owner) else np.empty((0, 3))
+        if old_world is not None:
+            velocities = (points - np.einsum('nk,nkj->nj', weights, old_world[triangles][owner])) / self.dt
+        elif previous is not None and not self.boundary_motion_from_velocity and len(points):
+            # Retain the old transform fallback only for legacy timelines.
+            local = (points - matrix[:3, 3]) @ np.linalg.inv(matrix[:3, :3]).T
+            velocities = (points - (local @ previous[1][:3, :3].T + previous[1][:3, 3])) / self.dt
+        else:
+            # Newly introduced or incompatible topology has no proven prior
+            # surface correspondence. Place it at the current pose.
+            velocities = np.zeros_like(points)
+        normals = (facing * normal / safe_normal[:, None])[owner]
         # Shared-edge samples are intentionally deduplicated.
-        points = np.concatenate(points) if points else np.empty((0, 3))
-        velocities = np.concatenate(velocities) if velocities else np.empty((0, 3))
         _, unique = np.unique(np.round(points / (spacing * 1e-5)).astype(np.int64), axis=0, return_index=True)
         result = points[unique]
-        self.boundary_normals[history_key] = (np.concatenate(normals) if normals else np.empty((0, 3)))[unique]
+        self.boundary_normals[history_key] = normals[unique]
         self.boundary_cache[history_key] = (world, triangles, spacing, result)
         if len(unique):
-            self.boundary_lattice[history_key] = (triangles, spacing, edges, np.concatenate(owners)[unique], facing,
-                                                  np.concatenate(kept_weights)[unique])
+            self.boundary_lattice[history_key] = (triangles, spacing, edges, owner[unique], facing, weights[unique])
         return result, velocities[unique]
 
     def _points(self, obj, props, depsgraph):
