@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "fumaris_liquid"
-version = "0.2.16"
+version = "0.2.17"
 name = "Aquaris"
 tagline = "Interactive Vulkan liquid simulation using Nebula"
 maintainer = "Fumaris"

@@ -166,6 +166,8 @@ class SceneExporter:
         self.boundary_cache = {}
         # Outward face normal of every collider sample, in the order _boundary returned them.
         self.boundary_normals = {}
+        # Per collider: where each surface sample sits on its triangle, reused while the mesh keeps its shape.
+        self.boundary_lattice = {}
         self.initialized = set()
         # Box around everything the liquid has been able to touch so far; see _strays.
         self.reach = None
@@ -531,10 +533,29 @@ class SceneExporter:
             raise RuntimeError(f"{obj.name}: collider requires evaluated mesh faces")
         previous = self.previous.get(history_key)
         old_world = previous[0] if previous is not None and len(previous[0]) == len(world) and np.array_equal(previous[2], triangles) else None
-        points, velocities, normals = [], [], []
         # A mirrored object (negative scale) reverses the winding of its world-space faces.
         facing = -1.0 if np.linalg.det(np.asarray(matrix)[:3, :3]) < 0 else 1.0
-        for triangle in triangles:
+        corners = world[triangles]
+        edges = np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2)
+        lattice = self.boundary_lattice.get(history_key)
+        if (lattice is not None and lattice[1] == spacing and lattice[4] == facing and np.array_equal(lattice[0], triangles)
+                and (old_world is not None or previous is None)
+                and np.allclose(edges, lattice[2], rtol=1e-5, atol=spacing * 1e-5)):
+            # The mesh has moved without changing shape (an animated rigid
+            # object, the usual moving collider): its samples keep their place
+            # on the surface, so only their positions are recomputed instead
+            # of rastering every triangle again.
+            owner, weights = lattice[3], lattice[5]
+            result = np.einsum('nk,nkj->nj', weights, corners[owner])
+            velocity = ((result - np.einsum('nk,nkj->nj', weights, old_world[triangles][owner])) / self.dt
+                        if old_world is not None else np.zeros_like(result))
+            normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+            normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-300)
+            self.boundary_normals[history_key] = facing * normal[owner]
+            self.boundary_cache[history_key] = (world, triangles, spacing, result)
+            return result, velocity
+        points, velocities, normals, owners, kept_weights, total = [], [], [], [], [], 0
+        for index, triangle in enumerate(triangles):
             a, b, c = world[triangle]
             edge_length = float(np.linalg.norm(b - a))
             normal = np.cross(b - a, c - a)
@@ -565,9 +586,12 @@ class SceneExporter:
                 edge_weights[:, first], edge_weights[:, second] = 1 - fractions, fractions
                 weight_parts.append(edge_weights)
             weights = np.concatenate(weight_parts)
-            if sum(len(part) for part in points) + len(weights) > limits(self.domain.fumaris_liquid)[1]:
+            total += len(weights)
+            if total > limits(self.domain.fumaris_liquid)[1]:
                 raise RuntimeError(_over(self.domain.fumaris_liquid, f"{obj.name}: collider sampling", "simplify the mesh or increase the particle radius"))
             positions = weights @ world[triangle]
+            owners.append(np.full(len(weights), index, dtype=np.int64))
+            kept_weights.append(weights)
             if old_world is not None:
                 velocity = (positions - weights @ old_world[triangle]) / self.dt
             elif previous is not None and not self.boundary_motion_from_velocity:
@@ -588,6 +612,9 @@ class SceneExporter:
         result = points[unique]
         self.boundary_normals[history_key] = (np.concatenate(normals) if normals else np.empty((0, 3)))[unique]
         self.boundary_cache[history_key] = (world, triangles, spacing, result)
+        if len(unique):
+            self.boundary_lattice[history_key] = (triangles, spacing, edges, np.concatenate(owners)[unique], facing,
+                                                  np.concatenate(kept_weights)[unique])
         return result, velocities[unique]
 
     def _points(self, obj, props, depsgraph):
