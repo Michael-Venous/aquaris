@@ -150,8 +150,8 @@ its walls, is thrown upward more strongly than with the particle solver;
 
 The **Draft** and **Final** buttons under the domain's status set the settings
 that trade speed for quality in one step, and light up when the current
-settings match. Draft: 2 pressure iterations and the **GPU (preview)** mesh
-quality, which builds the surface on the graphics card in milliseconds (about
+settings match. Draft: 2 pressure iterations, a surface cell of 1.5 radii and
+the **GPU (preview)** mesh quality, which builds the surface on the graphics card in milliseconds (about
 10 ms for 200,000 particles on an RTX 4060 Ti, against a second on the CPU);
 its droplets are simple, Droplet Size does not apply, and a frame too large for
 it is meshed with Fast instead. Final: 6 iterations and the Smooth mesh. Every
