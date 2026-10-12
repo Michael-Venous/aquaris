@@ -195,11 +195,13 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
 
 
 QUALITY_LEVELS = {
-    # Draft builds the surface on the GPU. A cell of 1.5 radii halves the
-    # triangles Blender has to take in each frame: 5.5 against 3.3 frames a
-    # second at 207k particles. Neither level changes the simulation.
-    "DRAFT": {"mesh_quality": "GPU_SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.5},
-    "FINAL": {"mesh_quality": "SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0},
+    # Draft builds the surface on the GPU, at a cell of 1.5 radii (half the
+    # triangles Blender has to take in each frame), and lets the solver take
+    # large steps. Final meshes on the CPU at one radius and takes steps of one
+    # cell: about twice the solve time, and wall run-up and settled volume no
+    # longer depend on Substeps (3% against 33% between 1 and 6 substeps).
+    "DRAFT": {"mesh_quality": "GPU_SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.5, "step_size": 3.0},
+    "FINAL": {"mesh_quality": "SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0, "step_size": 1.0},
 }
 
 

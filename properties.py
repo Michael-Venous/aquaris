@@ -50,10 +50,11 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                           "change the grid computed (FLIP: keeps detail and energy, noisier) and the rest from the grid's "
                                           "own smooth velocity (PIC: calm, thicker-looking). 0.95 suits splashes; lower it for calm or "
                                           "slow liquid, raise it towards 1 for the most energetic spray. Can be changed while running")
-    jet_limit: FloatProperty(name="Jet Limit", default=2.0, min=0, max=10, precision=2,
-                             description="Fastest speed allowed, as a multiple of what the liquid could reach from "
-                                         "its fall and the speed it was emitted or pushed at. Thin jets focus energy and can "
-                                         "shoot far above a splash; lower values calm them, 0 leaves them unlimited")
+    step_size: FloatProperty(name="Step Size", default=3.0, min=0.5, max=3.0, precision=1,
+                             description="How far the fastest liquid may travel in one solver step, in grid cells. 3 is the fast "
+                                         "preview: about half the steps, but the height a splash reaches on a wall and how the "
+                                         "liquid settles then depend on Substeps. At 1 they no longer do, for about twice the "
+                                         "time per frame. Draft sets 3, Final sets 1. Can be changed while running")
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005,
                                   max=2, subtype="DISTANCE",
                                   description="World-space sampling and solver radius; restart to change")

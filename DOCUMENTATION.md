@@ -62,7 +62,7 @@ Particle radius sets the liquid sampling spacing (twice the radius). Smaller
 values produce more particles and more work. Surface cell size controls output
 mesh detail independently. Radius, particle budgets, region and mesh sizing
 should be chosen before starting; their UI is disabled while running. Gravity,
-Substeps, Simulation Speed, FLIP Ratio and Jet Limit can be adjusted while playing.
+Substeps, Step Size, Simulation Speed and FLIP Ratio can be adjusted while playing.
 **Substeps** is the fewest steps the solver takes per frame; it adds more by
 itself when the liquid or a collider moves fast, so 1 is enough for most
 scenes. Gravity is entered in metres per second squared and is
@@ -186,19 +186,30 @@ The grid is a window fitted to the liquid before every step. There is no
 fixed domain box and no wall at the edge of the region: liquid is held only by
 collider meshes.
 
-Liquid squeezed into a narrow gap, such as a block of liquid released beside
-a wall, is thrown upward more strongly than real liquid would be, and the
-fastest droplets of an impact overshoot. **Jet Limit** (Simulation, default 2)
-caps speed at that multiple of what the liquid could reach from its fall and
-the speed it was emitted or pushed at; lower values calm thin jets, 0 leaves
-them unlimited. In a dam break at the default, single droplets still reach
-about twice the speed and several times the height a real one would.
+**Step Size** (Simulation, default 3) is how far the fastest liquid may travel
+in one solver step, in grid cells. At 3 the solver takes about half the steps
+and is the right choice for previews, but how high a splash runs up a wall and
+how the liquid settles then depend on Substeps (by about a third between 1 and
+6 substeps). At 1 they no longer do (3%), and a dam break runs 2.1 column
+heights up the far wall, as measured ones do, for about twice the time per
+frame. **Draft** sets 3 and **Final** sets 1.
+
+The liquid keeps its volume: each step the particles are moved, without
+changing their velocity, so that their density returns to what it was when
+they were emitted. Liquid emitted with gaps to its container therefore closes
+them, and liquid emitted overlapping a collider or packed too densely expands
+to its proper volume in the first steps.
+
+Where two streams meet in a corner, such as beside a block of liquid released
+next to a wall, a thin jet goes up faster than free fall allows any single
+drop elsewhere; single droplets of it can reach three or more times the
+liquid's starting height. At Step Size 3 that jet is larger than at 1.
 
 ## Draft and Final
 
 The **Draft** and **Final** buttons under the domain's status set the surface
 settings that trade speed for quality in one step, and light up when the
-current settings match. Neither changes the simulation. Draft: a surface cell
+current settings match. Draft: solver Step Size 3, a surface cell
 of 1.5 radii and the **GPU Smooth (preview)** mesh quality, which builds the surface on the
 graphics card in milliseconds (about 25 ms for 200,000 particles on an RTX
 4060 Ti, against a fraction of a second on the CPU) and, like Smooth, closes
@@ -210,7 +221,7 @@ frame that does not fit them to Fast with a warning. Because it fills gaps,
 GPU Smooth encloses more volume than GPU Fast in broken-up liquid (16-20%
 in a splashing dam break, almost none in a pool), joins bodies whose
 surfaces are within about three particle radii, and thins compact clumps of
-a few particles. Final: the Smooth mesh at a surface cell of one
+a few particles. Final: solver Step Size 1 and the Smooth mesh at a surface cell of one
 radius. Every setting stays editable afterwards.
 
 The surface settings (cell, Mesh Quality, Droplet Size, Surface Smoothing,
@@ -305,10 +316,9 @@ bubbles. There are no force fields. Each of these was a feature of the removed
 particle solver (see What this version does and does not do).
 
 Known limits of the solver, measured by its validation suite
-(`tools/tests/flip_validation_gpu_test.cpp` in the source archive) and being
-worked on: liquid meeting a wall or squeezed into a gap is thrown higher and
-faster than it should be (see Jet Limit), and the liquid's volume is not
-conserved exactly over a long run.
+(`tools/tests/flip_validation_gpu_test.cpp` in the source archive): at Step
+Size 3 the height reached on a wall depends on Substeps and corner jets are
+too large; at 1 both are within a few percent of the small-step result.
 
 Copy Diagnostics includes the current warning, device, Blender version and
 serialized settings.

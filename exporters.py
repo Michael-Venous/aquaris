@@ -69,7 +69,7 @@ def settings(scene, domain):
         raise RuntimeError("Each domain maximum must exceed its minimum")
     scale = max(1e-8, scene.unit_settings.scale_length)
     return {
-        "speed_ceiling": p.jet_limit,
+        "cfl": p.step_size,
         "flip_blend": p.flip_ratio,
         "particle_radius": p.particle_radius,
         "substeps": p.substeps,

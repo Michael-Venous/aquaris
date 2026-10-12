@@ -75,7 +75,7 @@ def _realtime(p):
     p.mesh_cell_relative = True
     p.mesh_cell_factor = 1.0
     p.surface_smoothing = 1.0
-    p.jet_limit = 2.0
+    p.step_size = 3.0
     p.substeps = 1
     # Nothing generates whitewater, so there is none to show.
     p.whitewater = False
@@ -88,6 +88,8 @@ def _detailed(p):
     p.particle_radius = 0.02
     p.mesh_cell_size = 0.02
     p.mesh_quality = "SMOOTH"
+    # Small steps: what a splash reaches and how it settles no longer depend on Substeps.
+    p.step_size = 1.0
 
 
 def create(context, preset="DAM_BREAK"):
