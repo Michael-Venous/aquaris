@@ -43,8 +43,8 @@ class LiquidProperties(bpy.types.PropertyGroup):
     # in front would otherwise change what saved files mean.
     solver: EnumProperty(name="Solver", items=[
         ("PBF", "Particles", "Position-based particle solver. Supports every feature: viscosity, surface tension, whitewater, effectors", 0),
-        ("FLIP", "Grid (experimental)", "Particles moved by a pressure solve on a grid. About ten times faster per particle and forms crowns "
-                                        "from solid impacts, at half the detail per particle. No viscosity, surface tension, whitewater or "
+        ("FLIP", "Grid (experimental)", "Particles moved by a pressure solve on a grid. Several times faster per particle, forms crowns "
+                                        "from solid impacts and plays small scenes live. No viscosity, surface tension, whitewater or "
                                         "effectors yet; colliders must be meshes with outward face normals", 1),
     ], default="PBF", description="How the liquid is simulated; restart to change")
     jet_limit: FloatProperty(name="Jet Limit", default=2.0, min=0, max=10, precision=2,
