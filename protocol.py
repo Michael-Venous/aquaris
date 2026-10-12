@@ -1,4 +1,4 @@
-"""Small binary transport shared by Blender and the headless Nebula worker.
+"""Small binary transport shared by Blender and the headless liquid worker.
 
 JSON describes each contiguous little-endian array; particle arrays never pass
 through JSON.  No Blender imports: this module also runs in standalone tests.

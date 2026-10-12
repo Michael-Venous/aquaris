@@ -37,7 +37,7 @@ def _material(name, color, roughness, transmission=0.0):
     return material
 
 
-def _liquid_material(name, viscous):
+def _liquid_material(name):
     """Clear refractive liquid whose colour comes from depth, not from its surface.
 
     A tinted Base Color on a transmissive surface darkens every ray equally and
@@ -46,7 +46,7 @@ def _liquid_material(name, viscous):
     """
     material = bpy.data.materials.new(name)
     material.use_nodes = True
-    tint, density, ior = ((0.80, 0.25, 0.03), 8.0, 1.47) if viscous else ((0.55, 0.85, 0.95), 0.35, 1.333)
+    tint, density, ior = (0.55, 0.85, 0.95), 0.35, 1.333
     material.diffuse_color = (*tint, 1)
     nodes, links = material.node_tree.nodes, material.node_tree.links
     shader = nodes.get("Principled BSDF")
@@ -444,8 +444,7 @@ def ensure_outputs(scene, domain):
         collection.objects.link(obj)
         setattr(p, prop_name, obj)
         if label == "Surface":
-            viscous = p.kinematic_viscosity > 0
-            material = _liquid_material(domain.name + (" Syrup" if viscous else " Water"), viscous)
+            material = _liquid_material(domain.name + " Water")
         elif label == "Whitewater":
             material = _material(domain.name + " Whitewater", (0.96, 0.98, 1), 0.6)
             # Foam scatters light inside itself rather than looking like painted beads.
@@ -548,21 +547,18 @@ def apply(scene, domain, header, payload):
         _attribute(p.whitewater_object.data, "velocity", block(header, payload, "whitewater_velocities"))
         _attribute(p.whitewater_object.data, "whitewater_type", block(header, payload, "whitewater_types", 1, True), True)
     update_visibility(domain)
-    p.status = f"Frame {header.get('frame', scene.frame_current)} · {len(positions):,} liquid · {len(whitewater):,} whitewater"
+    p.status = f"Frame {header.get('frame', scene.frame_current)} · {len(positions):,} liquid"
+    if len(whitewater):  # Only a cache baked by an earlier version contains any.
+        p.status += f" · {len(whitewater):,} whitewater"
     if p.display == "PREVIEW":
         p.status += " · GPU preview"
     if "simulation_ms" in header:
         p.status += f" · {header['simulation_ms']:.1f} ms sim"
     if header.get("emission_clipped", 0):
         p.status += f" · {header['emission_clipped']:,} source samples excluded by solids"
-    diagnostics = header.get("diagnostics", {})
     p.runtime_warning = ""
     if header.get("mesh_fallback"):
         p.runtime_warning = "GPU mesher could not take this frame and Fast was used: " + str(header["mesh_fallback"])[:160]
-    if diagnostics.get("viscosity_status") == 2:
-        p.runtime_warning = "Implicit viscosity encountered a numerical failure; lower viscosity or increase particle resolution"
-    elif diagnostics.get("viscosity_status") == 3 and diagnostics.get("viscosity_residual", 0) > p.viscosity_tolerance:
-        p.runtime_warning = "Implicit viscosity reached its iteration limit above tolerance; increase viscosity iterations"
 
 
 def update_visibility(domain):

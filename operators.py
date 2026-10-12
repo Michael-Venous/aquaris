@@ -42,12 +42,11 @@ class LIQUID_OT_setup(bpy.types.Operator):
     bl_description = "Add an independent liquid demonstration at the 3D cursor"
     bl_options = {"REGISTER", "UNDO"}
     preset: EnumProperty(name="Preset", items=[
-        ("SPLASH", "Splash (real-time)", "A ball dropped into a pool on the grid solver, sized to play back live with a surface"),
-        ("REALTIME_DAM_BREAK", "Dam Break (real-time)", "A wall of water released into pillars on the grid solver, sized to play back live"),
-        ("REALTIME_POUR", "Pour (real-time)", "Continuous inflow into a pool on the grid solver, sized to play back live"),
-        ("DAM_BREAK", "Dam Break (particles)", "Release an initial water volume into a basin, on the particle solver"),
-        ("POUR", "Pouring Water (particles)", "Continuous downward inflow into a basin, on the particle solver"),
-        ("VISCOUS_POUR", "Viscous Pour (particles)", "Higher viscosity pouring example, on the particle solver"),
+        ("SPLASH", "Splash (real-time)", "A ball dropped into a pool, sized to play back live with a surface"),
+        ("REALTIME_DAM_BREAK", "Dam Break (real-time)", "A wall of water released into pillars, sized to play back live"),
+        ("REALTIME_POUR", "Pour (real-time)", "Continuous inflow into a pool, sized to play back live"),
+        ("DAM_BREAK", "Dam Break (detailed)", "The dam break at a finer resolution with the Smooth mesh, meant for baking"),
+        ("POUR", "Pour (detailed)", "The pour at a finer resolution with the Smooth mesh, meant for baking"),
     ], default="SPLASH")
 
     @classmethod
@@ -196,24 +195,23 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
 
 
 QUALITY_LEVELS = {
-    # Two pressure iterations halve the particle solve (splashes are softer,
-    # about a third of the crown) and the surface is built on the GPU. A cell
-    # of 1.5 radii halves the triangles Blender has to take in each frame:
-    # 5.5 against 3.3 frames a second at 207k particles on the grid solver.
-    "DRAFT": {"iterations": 2, "mesh_quality": "GPU_SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.5},
-    "FINAL": {"iterations": 6, "mesh_quality": "SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0},
+    # Draft builds the surface on the GPU. A cell of 1.5 radii halves the
+    # triangles Blender has to take in each frame: 5.5 against 3.3 frames a
+    # second at 207k particles. Neither level changes the simulation.
+    "DRAFT": {"mesh_quality": "GPU_SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.5},
+    "FINAL": {"mesh_quality": "SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0},
 }
 
 
 class LIQUID_OT_quality(bpy.types.Operator):
     bl_idname = "fumaris_liquid.quality"
     bl_label = "Set Liquid Quality"
-    bl_description = ("Set the settings that trade speed for quality in one step. Draft: 2 pressure iterations, "
-                      "surface built on the GPU. Final: 6 iterations, Smooth mesh. "
+    bl_description = ("Set the surface settings that trade speed for quality in one step. Draft: GPU Smooth mesh "
+                      "with a surface cell of 1.5 particle radii. Final: Smooth mesh with a cell of one radius. "
                       "Each setting stays editable afterwards")
     bl_options = {"REGISTER", "UNDO"}
-    level: bpy.props.EnumProperty(items=[("DRAFT", "Draft", "Fast to simulate and mesh, softer splashes"),
-                                         ("FINAL", "Final", "Full pressure solve and the smooth surface")])
+    level: bpy.props.EnumProperty(items=[("DRAFT", "Draft", "Surface built on the graphics card on a coarser cell; fast to mesh and to display"),
+                                         ("FINAL", "Final", "The Smooth surface at one cell per particle radius")])
 
     def execute(self, context):
         domain = domain_for(context)

@@ -34,7 +34,7 @@ def find_worker():
     for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise RuntimeError("Nebula worker is missing. Build or install the Aquaris extension package.")
+    raise RuntimeError("The Aquaris worker is missing. Build or install the Aquaris extension package.")
 
 
 def _private_directory(path):

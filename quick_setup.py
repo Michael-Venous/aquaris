@@ -60,14 +60,15 @@ def _sphere(name, collection, location, radius):
     return obj
 
 
-# Presets that run in real time on the grid solver with a surface shown.
+# Presets that run in real time with a surface shown.
 REALTIME = {"SPLASH", "REALTIME_DAM_BREAK", "REALTIME_POUR"}
+# The same scenes at a finer resolution with the Smooth mesh, meant for baking.
+DETAILED = {"DAM_BREAK": "REALTIME_DAM_BREAK", "POUR": "REALTIME_POUR"}
 
 
 def _realtime(p):
-    """Grid solver settings measured to hold about 20-28 frames a second with a
-    surface on an RTX 4060 Ti: 15,000-26,000 particles, surface built on the GPU."""
-    p.solver = "FLIP"
+    """Settings measured to hold about 20-28 frames a second with a surface on
+    an RTX 4060 Ti: 15,000-26,000 particles, surface built on the GPU."""
     p.particle_radius = 0.028
     p.display = "SURFACE"
     p.mesh_quality = "GPU_SMOOTH"
@@ -76,12 +77,22 @@ def _realtime(p):
     p.surface_smoothing = 1.0
     p.jet_limit = 2.0
     p.substeps = 1
-    # The grid solver makes no whitewater; leave the switch off so a later
-    # change of solver starts from what was seen.
+    # Nothing generates whitewater, so there is none to show.
     p.whitewater = False
 
 
+def _detailed(p):
+    """The real-time settings at 2.7 times the particles (radius 0.02) with the
+    Smooth mesh built on the CPU: about 48,000 particles in the dam break."""
+    _realtime(p)
+    p.particle_radius = 0.02
+    p.mesh_cell_size = 0.02
+    p.mesh_quality = "SMOOTH"
+
+
 def create(context, preset="DAM_BREAK"):
+    if preset not in REALTIME and preset not in DETAILED:
+        raise ValueError(f"Unknown Aquaris setup: {preset}")
     scene = context.scene
     origin = scene.cursor.location.copy()
     root = _collection("Aquaris " + preset.title().replace("_", " "), scene.collection)
@@ -104,16 +115,7 @@ def create(context, preset="DAM_BREAK"):
     p.bounds_max = origin + Vector((2.6, 1.6, 3.4))
     p.bake_start = scene.frame_current
     p.bake_end = scene.frame_current + 119
-    # At the old .065 radius the default nozzle was only three particles wide,
-    # and the basin became a one-particle-thick sheet. A useful artistic preview
-    # needs enough samples across both the jet and the pool depth.
-    p.particle_radius = 0.035
     p.mesh_cell_size = 0.035
-    p.iterations = 6
-    p.substeps = 3
-    p.viscosity = 0.015
-    p.surface_tension = 0.08
-    p.whitewater_generation = 0.5
     display.ensure_identity(domain)
     # Five actual solids create a basin; the domain allocation is not a wall.
     walls = [
@@ -129,9 +131,11 @@ def create(context, preset="DAM_BREAK"):
         obj.display_type = "WIRE"
     if preset in REALTIME:
         _realtime(p)
+    else:
+        _detailed(p)
+        preset = DETAILED[preset]
     if preset == "SPLASH":
-        # A ball dropped into a pool: the crown a solid impact throws up is
-        # what the grid solver does and the particle solver cannot.
+        # A ball dropped into a pool throws up a crown.
         emitter = _box("Initial Pool", emitters, origin + Vector((0, 0, 0.26)), (3.94, 2.04, 0.5))
         emitter.fumaris_liquid.emission_mode = "INITIAL"
         ball = _sphere("Falling Ball", colliders, origin + Vector((0, 0, 2.0)), 0.32)
@@ -157,9 +161,6 @@ def create(context, preset="DAM_BREAK"):
                                      ("Pillar Far", (1.0, 0.38, 0.4), (0.36, 0.36, 0.8))):
             pillar = _box(name, colliders, origin + Vector(location), size)
             pillar.fumaris_liquid.role = "COLLIDER"
-    elif preset == "DAM_BREAK":
-        emitter = _box("Initial Liquid", emitters, origin + Vector((-1.15, 0, 0.85)), (1.2, 1.8, 1.5))
-        emitter.fumaris_liquid.emission_mode = "INITIAL"
     else:
         # A shallow existing pool makes splashes and recovery visible from the
         # first second without spending the user's iteration time filling a tank.
@@ -173,17 +174,8 @@ def create(context, preset="DAM_BREAK"):
         emitter.fumaris_liquid.emission_mode = "CONTINUOUS"
         emitter.fumaris_liquid.velocity = (0, 0, -2)
         emitter.fumaris_liquid.emission_frequency = 48
-        if preset == "VISCOUS_POUR":
-            p.viscosity = 0.02
-            p.kinematic_viscosity = 0.005
-            # Thick liquids read as one glossy material: keep droplets whole
-            # and remove particle-scale dimples from the surface.
-            p.surface_smoothing = 0.9
-            p.droplet_scale = 1.0
-            p.surface_tension = 0.2
-            p.substeps = 4
     emitter.fumaris_liquid.role = "EMITTER"
-    emitter.fumaris_liquid.source_shape = "BOX" if preset in {"DAM_BREAK", "REALTIME_DAM_BREAK", "SPLASH"} else "CYLINDER"
+    emitter.fumaris_liquid.source_shape = "BOX" if preset in {"REALTIME_DAM_BREAK", "SPLASH"} else "CYLINDER"
     emitter.display_type = "WIRE"
     emitter.hide_render = True
     display.ensure_outputs(scene, domain)

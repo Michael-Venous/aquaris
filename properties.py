@@ -31,7 +31,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("EMITTER", "Emitter", "Create liquid particles"),
         ("COLLIDER", "Collider", "A sampled solid collision surface"),
         ("OUTFLOW", "Outflow", "Remove liquid inside the evaluated bounding box"),
-        ("EFFECTOR", "Effector", "Apply a localized acceleration"),
+        ("EFFECTOR", "Effector", "Force field. Not available in this version: a simulation with an enabled effector does not start"),
     ], default="NONE")
     enabled: BoolProperty(name="Enabled", default=True,
                           description="Animate to enable or disable this participant")
@@ -45,37 +45,15 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_object: PointerProperty(type=bpy.types.Object)
     particle_object: PointerProperty(type=bpy.types.Object)
     mist_object: PointerProperty(type=bpy.types.Object)
-    # Explicit numbers: Blender stores an enum by number, and an item added
-    # in front would otherwise change what saved files mean.
-    solver: EnumProperty(name="Solver", items=[
-        ("PBF", "Particles", "Position-based particle solver. Supports every feature: viscosity, surface tension, whitewater, effectors", 0),
-        ("FLIP", "Grid (experimental)", "Particles moved by a pressure solve on a grid. Several times faster per particle, forms crowns "
-                                        "from solid impacts and plays small scenes live. No viscosity, surface tension, whitewater or "
-                                        "effectors yet; colliders must be meshes with outward face normals", 1),
-    ], default="PBF", description="How the liquid is simulated; restart to change")
     jet_limit: FloatProperty(name="Jet Limit", default=2.0, min=0, max=10, precision=2,
-                             description="Grid solver: fastest speed allowed, as a multiple of what the liquid could reach from "
+                             description="Fastest speed allowed, as a multiple of what the liquid could reach from "
                                          "its fall and the speed it was emitted or pushed at. Thin jets focus energy and can "
                                          "shoot far above a splash; lower values calm them, 0 leaves them unlimited")
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005,
                                   max=2, subtype="DISTANCE",
                                   description="World-space sampling and solver radius; restart to change")
-    iterations: IntProperty(name="Pressure Iterations", default=6, min=1, max=100)
-    substeps: IntProperty(name="Substeps", default=3, min=1, max=64)
-    viscosity: FloatProperty(name="Velocity Smoothing", default=0.02, min=0, max=1,
-                             description="Nebula velocity smoothing coefficient; higher values resist relative motion")
-    kinematic_viscosity: FloatProperty(name="Kinematic Viscosity", default=0, min=0, max=100,
-                                       description="Implicit physical viscosity in square metres per second")
-    viscosity_iterations: IntProperty(name="Viscosity Iterations", default=64, min=1, max=256)
-    viscosity_tolerance: FloatProperty(name="Viscosity Tolerance", default=0.001,
-                                       min=0.000001, max=0.1, precision=6)
-    boundary_viscosity: FloatProperty(name="Boundary Viscosity", default=1, min=0, max=10,
-                                      description="Multiplier for viscous coupling to moving collider surfaces")
-    surface_tension: FloatProperty(name="Surface Tension", default=0.1, min=0, max=10)
-    pressure_speed_gain: FloatProperty(name="Pressure Speed Limit", default=40, min=0, max=100000,
-                                       description="Most speed that pressure may add to a particle per second, in metres "
-                                                   "per second squared. Stops droplets being shot out of squeezed gaps "
-                                                   "at many times the flow speed; 0 disables the limit")
+    substeps: IntProperty(name="Substeps", default=3, min=1, max=64,
+                          description="Fewest steps the solver takes per frame; it adds more by itself when the liquid or a collider moves fast")
     gravity: FloatVectorProperty(name="Gravity", default=(0, 0, -9.81), size=3)
     bounds_min: FloatVectorProperty(name="Minimum", default=(-3, -2, -1), size=3,
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
@@ -86,25 +64,18 @@ class LiquidProperties(bpy.types.PropertyGroup):
     auto_budgets: BoolProperty(name="Automatic Limits", default=True,
                                description="Let particles, collider samples and surface cells grow to the solver's own limits (4 million particles, 4 million collider samples, 64 million surface cells). Memory is taken as the simulation grows, so nothing is reserved in advance. Turn off to set smaller budgets that stop a runaway setup early")
     max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000)
-    max_whitewater: IntProperty(name="Whitewater Budget", default=25000, min=0, max=1000000)
     max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=4000000,
                               description="Collider surface samples accepted per frame; finer particles need more")
-    whitewater: BoolProperty(name="Foam, Spray and Bubbles", default=True, update=_display_update)
-    whitewater_generation: FloatProperty(name="Generation", default=1, min=0, max=10)
+    # This version generates no whitewater. The switch, size and mist remain
+    # for the foam, spray and bubbles stored in caches baked by earlier versions.
+    whitewater: BoolProperty(name="Show Whitewater", default=True, update=_display_update,
+                             description="Show the foam, spray and bubbles stored in a cache baked by an earlier version. This version does not generate whitewater")
     whitewater_size: FloatProperty(name="Particle Size", default=2, min=0.1, max=20, update=_look_update,
                                    description="Rendered size of spray, foam and bubble particles. 1 is the size used before Aquaris 0.2.8; larger particles read as denser foam")
     whitewater_mist: FloatProperty(name="Mist", default=0, min=0, max=100, update=_look_update,
                                    description="Density of a soft scattering volume built from spray and foam, for falls and heavy spray. 0 disables it. Needs Light Paths > Volume bounces above zero in Cycles to render white")
     whitewater_mist_radius: FloatProperty(name="Mist Radius", default=4, min=1, max=20, update=_look_update,
                                           description="Reach of each whitewater particle's mist, in liquid particle radii")
-    whitewater_energy_min: FloatProperty(name="Minimum Energy", default=0.5, min=0, max=10000,
-                                         description="Kinetic energy per unit mass in square metres per square second")
-    whitewater_energy_max: FloatProperty(name="Maximum Energy", default=10, min=0, max=10000)
-    whitewater_lifetime_min: FloatProperty(name="Minimum Lifetime", default=1, min=0.01, max=60)
-    whitewater_lifetime_max: FloatProperty(name="Maximum Lifetime", default=3, min=0.01, max=60)
-    whitewater_buoyancy: FloatProperty(name="Bubble Buoyancy", default=4, min=-100, max=100,
-                                      description="Bubble acceleration in metres per second squared")
-    whitewater_drag: FloatProperty(name="Drag", default=0.4, min=0, max=1)
     mesh_cell_relative: BoolProperty(update=_surface_update, name="Follow Particle Radius", default=True,
                                      description="Size the surface cells from the particle radius, so the surface keeps its level of detail when the resolution changes")
     mesh_cell_factor: FloatProperty(update=_surface_update, name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
@@ -215,15 +186,6 @@ class LiquidProperties(bpy.types.PropertyGroup):
     ], default="XY")
     mask_scale: FloatVectorProperty(name="Mask Scale", default=(1, 1, 1), size=3)
     mask_offset: FloatVectorProperty(name="Mask Offset", default=(0, 0, 0), size=3)
-    effector_kind: EnumProperty(name="Force", items=[
-        ("FORCE", "Force", "Uniform acceleration within radius"),
-        ("WIND", "Wind", "Directional acceleration along local Z"),
-        ("VORTEX", "Vortex", "Swirl around local Z"),
-        ("TURBULENCE", "Turbulence", "Spatially varying acceleration"),
-    ], default="FORCE")
-    force_vector: FloatVectorProperty(name="Acceleration", default=(0, 0, 1), size=3)
-    force_strength: FloatProperty(name="Strength", default=1, min=-1000, max=1000)
-    force_radius: FloatProperty(name="Radius", default=2, min=0.01, subtype="DISTANCE")
 
 
 def register():

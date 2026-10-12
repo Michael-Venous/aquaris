@@ -67,38 +67,13 @@ def settings(scene, domain):
     p = domain.fumaris_liquid
     if any(p.bounds_max[i] <= p.bounds_min[i] for i in range(3)):
         raise RuntimeError("Each domain maximum must exceed its minimum")
-    if p.whitewater_energy_max <= p.whitewater_energy_min:
-        raise RuntimeError("Whitewater maximum energy must exceed its minimum")
-    if p.whitewater_lifetime_max < p.whitewater_lifetime_min:
-        raise RuntimeError("Whitewater maximum lifetime must be at least its minimum")
     scale = max(1e-8, scene.unit_settings.scale_length)
     return {
-        "solver": p.solver,
         "speed_ceiling": p.jet_limit,
         "particle_radius": p.particle_radius,
-        "iterations": p.iterations,
         "substeps": p.substeps,
-        "viscosity": p.viscosity,
-        "kinematic_viscosity": p.kinematic_viscosity / (scale * scale),
-        "viscosity_iterations": p.viscosity_iterations,
-        "viscosity_tolerance": p.viscosity_tolerance,
-        "boundary_viscosity": p.boundary_viscosity,
-        "surface_tension": p.surface_tension,
-        # Stated for Earth gravity; stronger gravity raises it in proportion so
-        # ordinary gravity-driven flow is never capped. Zero gravity keeps it.
-        "pressure_speed_gain": min(1e6, p.pressure_speed_gain / scale *
-                                   max(1.0, math.sqrt(sum(v * v for v in p.gravity)) / 9.81)),
         "max_particles": limits(p)[0],
-        "max_whitewater": p.max_whitewater,
         "max_boundary": limits(p)[1],
-        "whitewater": p.whitewater,
-        "whitewater_generation": p.whitewater_generation,
-        "whitewater_energy_min": p.whitewater_energy_min / (scale * scale),
-        "whitewater_energy_max": p.whitewater_energy_max / (scale * scale),
-        "whitewater_lifetime_min": p.whitewater_lifetime_min,
-        "whitewater_lifetime_max": p.whitewater_lifetime_max,
-        "whitewater_buoyancy": p.whitewater_buoyancy / scale,
-        "whitewater_drag": p.whitewater_drag,
         "gravity": [v / scale for v in p.gravity],
         "bounds_min": list(p.bounds_min),
         "bounds_max": list(p.bounds_max),
@@ -715,8 +690,11 @@ class SceneExporter:
         emission_batches = []
         emitted_count = 0
         excluded_count = 0
-        outflows, forces, current = [], [], {}
+        outflows, current = [], {}
         objects = list(participants(self.scene, self.domain))
+        # Refused before anything is sampled: the solver has no force fields.
+        if any(obj.fumaris_liquid.role == "EFFECTOR" and obj.fumaris_liquid.enabled for obj in objects):
+            raise RuntimeError("The grid solver does not support effectors yet; empty the effector collection")
         collider_geometry, solids, solid_keys = {}, [], set()
         # Evaluate solids before emitters regardless of collection/object order.
         # Geometry is reused below, so this adds no second Blender evaluation.
@@ -744,12 +722,6 @@ class SceneExporter:
             if props.role == "EMITTER" and props.emission_mode == "INITIAL" and obj.as_pointer() in self.initialized:
                 continue
             evaluated = obj.evaluated_get(depsgraph)
-            if props.role == "EFFECTOR":
-                axis = evaluated.matrix_world.to_3x3() @ Vector((0, 0, 1))
-                forces.append({"kind": props.effector_kind, "center": list(evaluated.matrix_world.translation),
-                               "vector": list(props.force_vector) if props.effector_kind == "FORCE" else list(axis.normalized()),
-                               "strength": props.force_strength, "radius": props.force_radius})
-                continue
             if props.role == "OUTFLOW":
                 corners = np.asarray([tuple(evaluated.matrix_world @ Vector(v)) for v in evaluated.bound_box])
                 outflows.append([corners.min(axis=0).tolist(), corners.max(axis=0).tolist()])
@@ -883,12 +855,10 @@ class SceneExporter:
         self._budget(len(arrays["positions"]))
         if not unchanged and patches is None and len(arrays["boundary_positions"]) > limits(p)[1]:
             raise RuntimeError(_over(p, "Combined collider sampling", "simplify geometry or increase the particle radius"))
-        if forces and p.solver == "FLIP":
-            raise RuntimeError("The grid solver does not support effectors yet; empty the effector collection or use the particle solver")
         # Unchanged colliders are already inside the box _strays keeps.
         strays = self._strays(p, (arrays["positions"],) if unchanged else (arrays["positions"], arrays["boundary_positions"])) if p.remove_strays else []
-        if len(forces) > 31 or len(outflows) + len(strays) > 32:
-            raise RuntimeError(f"A simulation supports at most 31 effectors and {32 - len(strays)} outflows")
+        if len(outflows) + len(strays) > 32:
+            raise RuntimeError(f"A simulation supports at most {32 - len(strays)} outflows")
         outflows = outflows + strays
         if unchanged:
             reuse = True
@@ -916,4 +886,4 @@ class SceneExporter:
                 "reuse_boundaries": reuse,
                 **({"boundary_patches": patches} if patches is not None else {}),
                 "boundary_motion_from_velocity": self.boundary_motion_from_velocity,
-                "outflows": outflows, "forces": forces}, payload
+                "outflows": outflows}, payload

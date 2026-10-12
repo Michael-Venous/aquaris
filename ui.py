@@ -6,6 +6,10 @@ import textwrap
 from . import operators, session
 
 
+# The one line the panel shows for what this version does not simulate.
+UNAVAILABLE = "Viscosity, surface tension, whitewater and force fields are not available in this version."
+
+
 def _control(layout, text, action, icon):
     op = layout.operator("fumaris_liquid.control", text=text, icon=icon)
     op.action = action
@@ -58,10 +62,8 @@ def _participant(layout, context):
                 for name in ("mask_scale", "mask_offset", "mask_threshold"):
                     mask.prop(p, name)
     elif p.role == "EFFECTOR":
-        for name in ("effector_kind", "force_strength", "force_radius"):
-            box.prop(p, name)
-        if p.effector_kind == "FORCE":
-            box.prop(p, "force_vector")
+        box.label(text="Force fields are not available in this version", icon="INFO")
+        box.label(text="Disable or remove it to simulate")
     elif p.role == "OUTFLOW":
         box.label(text="Removes particles inside the world bounding box")
     elif p.role == "COLLIDER":
@@ -161,35 +163,19 @@ def _draw(layout, context):
         if box is not None:
             structural = box.column()
             structural.enabled = running is None
-            structural.prop(p, "solver")
-            if p.solver == "FLIP":
-                note = box.column(align=True)
-                note.label(text="Grid solver: experimental", icon="INFO")
-                note.label(text="No viscosity, tension, whitewater or effectors yet")
-                box.prop(p, "jet_limit")
             structural.prop(p, "particle_radius")
-            # Settings the grid solver does not use are greyed rather than hidden.
-            for name in ("iterations", "substeps", "speed", "gravity", "kinematic_viscosity", "viscosity", "surface_tension",
-                         "pressure_speed_gain"):
-                row = box.row()
-                row.enabled = p.solver == "PBF" or name in ("substeps", "speed", "gravity")
-                row.prop(p, name)
-            if p.kinematic_viscosity > 0:
-                for name in ("viscosity_iterations", "viscosity_tolerance", "boundary_viscosity"):
-                    box.prop(p, name)
-        box = _section(layout, "whitewater", "Foam, Spray and Bubbles", closed=True)
+            for name in ("substeps", "speed", "gravity", "jet_limit"):
+                box.prop(p, name)
+            note = box.column(align=True)
+            for line in textwrap.wrap(UNAVAILABLE, width=max(24, int(context.region.width / 7) - 8) if context.region else 48):
+                note.label(text=line)
+        box = _section(layout, "whitewater", "Whitewater from Earlier Caches", closed=True)
         if box is not None:
+            # Nothing here simulates: these show the foam, spray and bubbles a
+            # cache baked by an earlier version contains.
             box.prop(p, "whitewater")
-            if p.solver == "FLIP":
-                box.label(text="The grid solver makes no whitewater yet", icon="INFO")
-            foam = box.column()
-            foam.enabled = p.whitewater and p.solver == "PBF"
-            for name in ("whitewater_generation", "whitewater_energy_min", "whitewater_energy_max",
-                         "whitewater_lifetime_min", "whitewater_lifetime_max", "whitewater_buoyancy", "whitewater_drag"):
-                foam.prop(p, name)
             look = box.column(align=True)
             look.enabled = p.whitewater
-            look.label(text="Appearance (no rebake needed)")
             look.prop(p, "whitewater_size")
             look.prop(p, "whitewater_mist")
             mist = look.row()
@@ -203,7 +189,6 @@ def _draw(layout, context):
             manual.enabled = not p.auto_budgets
             manual.prop(p, "max_particles")
             manual.prop(p, "max_boundary")
-            box.prop(p, "max_whitewater")
             box.label(text="Initial GPU region (auto expands)")
             box.prop(p, "bounds_min")
             box.prop(p, "bounds_max")
