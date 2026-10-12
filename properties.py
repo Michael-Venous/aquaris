@@ -45,6 +45,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                         "solid impacts. No viscosity, surface tension, whitewater or effectors yet; colliders are "
                                         "treated as thin shells"),
     ], default="PBF", description="How the liquid is simulated; restart to change")
+    jet_limit: FloatProperty(name="Jet Limit", default=2.0, min=0, max=10, precision=2,
+                             description="Grid solver: fastest speed allowed, as a multiple of what the liquid could reach from "
+                                         "its fall and the speed it was emitted or pushed at. Thin jets focus energy and can "
+                                         "shoot far above a splash; lower values calm them, 0 leaves them unlimited")
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005,
                                   max=2, subtype="DISTANCE",
                                   description="World-space sampling and solver radius; restart to change")

@@ -72,6 +72,7 @@ def settings(scene, domain):
     scale = max(1e-8, scene.unit_settings.scale_length)
     return {
         "solver": p.solver,
+        "speed_ceiling": p.jet_limit,
         "particle_radius": p.particle_radius,
         "iterations": p.iterations,
         "substeps": p.substeps,

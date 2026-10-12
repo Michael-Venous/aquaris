@@ -1,7 +1,5 @@
 """Fumaris-style participant collections, transport and bake controls."""
 
-import os
-
 import bpy
 import textwrap
 
@@ -163,18 +161,19 @@ def _draw(layout, context):
         if box is not None:
             structural = box.column()
             structural.enabled = running is None
-            # The grid solver is offered only on request until its colliders are
-            # reliable: set AQUARIS_EXPERIMENTAL=1 before starting Blender.
-            if os.environ.get("AQUARIS_EXPERIMENTAL") or p.solver != "PBF":
-                structural.prop(p, "solver")
+            structural.prop(p, "solver")
             if p.solver == "FLIP":
                 note = box.column(align=True)
                 note.label(text="Grid solver: experimental", icon="INFO")
                 note.label(text="No viscosity, tension, whitewater or effectors yet")
+                box.prop(p, "jet_limit")
             structural.prop(p, "particle_radius")
+            # Settings the grid solver does not use are greyed rather than hidden.
             for name in ("iterations", "substeps", "speed", "gravity", "kinematic_viscosity", "viscosity", "surface_tension",
                          "pressure_speed_gain"):
-                box.prop(p, name)
+                row = box.row()
+                row.enabled = p.solver == "PBF" or name in ("substeps", "speed", "gravity")
+                row.prop(p, name)
             if p.kinematic_viscosity > 0:
                 for name in ("viscosity_iterations", "viscosity_tolerance", "boundary_viscosity"):
                     box.prop(p, name)
