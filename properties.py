@@ -92,14 +92,14 @@ class LiquidProperties(bpy.types.PropertyGroup):
     # Numbered as before the GPU item existed (0.2.12 and earlier files); files
     # saved by 0.2.13 or 0.2.14 used the order GPU, Fast, Final, Smooth.
     mesh_quality: EnumProperty(name="Mesh Quality", update=_surface_update, items=[
-        ("GPU_SMOOTH", "GPU Smooth (preview)", "Built on the graphics card in milliseconds with the stretched kernels of Smooth: resting liquid is flat, "
-                                               "splashes stay connected sheets. Droplets are simple and Droplet Size does not apply; "
-                                               "needs a surface cell of at least half a particle radius and falls back to Fast when a frame does not fit", 4),
+        ("GPU_SMOOTH", "GPU Smooth (preview)", "Built on the graphics card in milliseconds, then closed and smoothed as a field before it is meshed: resting liquid is flat, "
+                                               "splashes stay connected sheets, slits and pores fill. Droplets are simple and Droplet Size does not apply; "
+                                               "liquid closer together than about three particle radii joins; falls back to Fast when a frame does not fit", 4),
         ("GPU", "GPU Fast (preview)", "Built on the graphics card in milliseconds on round kernels: shows every particle-scale bump. "
                                       "Droplets are simple and Droplet Size does not apply; falls back to Fast when a frame is too large for it", 3),
         ("FAST", "Fast", "Smooth surface on the requested grid", 0),
         ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time", 1),
-        ("SMOOTH", "Smooth", "Anisotropic reconstruction reduces particle-scale bumps; slower and can join narrow gaps", 2),
+        ("SMOOTH", "Smooth", "The density field is closed and smoothed before it is meshed: removes particle-scale bumps and fills slits; slower than Fast and joins liquid closer than about three particle radii", 2),
     ], default="FINAL")
     droplet_scale: FloatProperty(update=_surface_update, name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
                                  description="Size of detached droplets of one to three particles in the surface mesh. "

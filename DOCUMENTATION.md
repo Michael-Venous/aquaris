@@ -201,13 +201,16 @@ settings that trade speed for quality in one step, and light up when the
 current settings match. Neither changes the simulation. Draft: a surface cell
 of 1.5 radii and the **GPU Smooth (preview)** mesh quality, which builds the surface on the
 graphics card in milliseconds (about 25 ms for 200,000 particles on an RTX
-4060 Ti, against a second or more on the CPU) with the stretched kernels of
-Smooth: resting liquid is flat and splashes stay connected sheets. **GPU Fast
-(preview)** uses round kernels instead and shows every particle-scale bump.
-Both draw droplets as simple shapes, ignore Droplet Size, and hand a frame
-that does not fit them to Fast with a warning; GPU Smooth needs a surface cell
-of at least half a particle radius and encloses a few percent more volume than
-Smooth in splashing liquid. Final: the Smooth mesh at a surface cell of one
+4060 Ti, against a fraction of a second on the CPU) and, like Smooth, closes
+and smooths the density field before meshing it: resting liquid is flat,
+splashes stay connected sheets, and slits and pores between particles fill.
+**GPU Fast (preview)** meshes the raw field and shows every particle-scale
+bump. Both draw droplets as simple shapes, ignore Droplet Size, and hand a
+frame that does not fit them to Fast with a warning. Because it fills gaps,
+GPU Smooth encloses more volume than GPU Fast in broken-up liquid (16-20%
+in a splashing dam break, almost none in a pool), joins bodies whose
+surfaces are within about three particle radii, and thins compact clumps of
+a few particles. Final: the Smooth mesh at a surface cell of one
 radius. Every setting stays editable afterwards.
 
 The surface settings (cell, Mesh Quality, Droplet Size, Surface Smoothing,
@@ -375,11 +378,11 @@ restores diagnostic points; switching to **Surface** asynchronously meshes its
 exact frozen particles without advancing the simulation. **Mesh Quality > Final**
 refines coarse surface cells to retain thin features; **Fast** keeps the requested
 grid. Final can cost more time and memory. Both preserve detached droplets and
-smooth the surface while preserving component volume. **Smooth** uses bounded
-anisotropic kernels and local density compensation to reduce particle-scale
-bumps and produce more continuous surfaces. It costs more CPU time and can join
-closely spaced sparse features; it does not change the simulation or correct
-underdense fluid. Fast and Final remain available for finer gap preservation.
+smooth the surface while preserving component volume. **Smooth** builds the same round-kernel
+field, then closes it (dilate, smooth, erode over about a particle spacing)
+before meshing, which removes particle-scale bumps and gives more continuous
+surfaces. It costs more CPU time than Fast and joins closely spaced
+features; it does not change the simulation or correct underdense fluid. Fast and Final remain available for finer gap preservation.
 Choose the quality before starting a simulation, or before switching a stopped
 GPU Surface preview to Surface. **Record Preview** and
 **Bake** always save the full surface, even when GPU Surface is selected. The
