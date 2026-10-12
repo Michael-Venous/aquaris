@@ -3,7 +3,7 @@
 bl_info = {
     "name": "Aquaris",
     "author": "Fumaris",
-    "version": (0, 2, 14),
+    "version": (0, 2, 15),
     "blender": (5, 2, 0),
     "location": "Properties > Physics; Viewport > Aquaris",
     "description": "Interactive Vulkan liquid simulation using Nebula",
