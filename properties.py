@@ -12,6 +12,12 @@ def _display_update(self, context):
         display.refresh_mode(context.scene, self.id_data)
 
 
+def _surface_update(self, context):
+    if self.role == "DOMAIN":
+        from . import session
+        session.surface_changed(self.id_data)
+
+
 def _look_update(self, context):
     if self.role == "DOMAIN":
         from . import display
@@ -99,17 +105,17 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_buoyancy: FloatProperty(name="Bubble Buoyancy", default=4, min=-100, max=100,
                                       description="Bubble acceleration in metres per second squared")
     whitewater_drag: FloatProperty(name="Drag", default=0.4, min=0, max=1)
-    mesh_cell_relative: BoolProperty(name="Follow Particle Radius", default=True,
-                                     description="Size the surface cells from the particle radius, so the surface keeps its level of detail when the resolution changes; restart to change")
-    mesh_cell_factor: FloatProperty(name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
-                                    description="Surface cell size in particle radii. 1 resolves every particle. With Fast quality 2 meshes about three times faster and looks softer; Final and Smooth refine the surface back to one radius, so a larger cell does not speed them up. Restart to change")
-    mesh_cell_size: FloatProperty(name="Surface Cell Size", default=0.04, min=0.005,
-                                 subtype="DISTANCE", description="Smaller cells give a finer surface; restart to change")
-    max_mesh_cells: IntProperty(name="Surface Cell Budget", default=2000000,
+    mesh_cell_relative: BoolProperty(update=_surface_update, name="Follow Particle Radius", default=True,
+                                     description="Size the surface cells from the particle radius, so the surface keeps its level of detail when the resolution changes")
+    mesh_cell_factor: FloatProperty(update=_surface_update, name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
+                                    description="Surface cell size in particle radii. 1 resolves every particle. With Fast quality 2 meshes about three times faster and looks softer; Final and Smooth refine the surface back to one radius, so a larger cell does not speed them up")
+    mesh_cell_size: FloatProperty(update=_surface_update, name="Surface Cell Size", default=0.04, min=0.005,
+                                 subtype="DISTANCE", description="Smaller cells give a finer surface")
+    max_mesh_cells: IntProperty(update=_surface_update, name="Surface Cell Budget", default=2000000,
                                 min=1000, max=64000000)
     # Numbered as before the GPU item existed (0.2.12 and earlier files); files
     # saved by 0.2.13 or 0.2.14 used the order GPU, Fast, Final, Smooth.
-    mesh_quality: EnumProperty(name="Mesh Quality", items=[
+    mesh_quality: EnumProperty(name="Mesh Quality", update=_surface_update, items=[
         ("GPU_SMOOTH", "GPU Smooth (preview)", "Built on the graphics card in milliseconds with the stretched kernels of Smooth: resting liquid is flat, "
                                                "splashes stay connected sheets. Droplets are simple and Droplet Size does not apply; "
                                                "needs a surface cell of at least half a particle radius and falls back to Fast when a frame does not fit", 4),
@@ -119,13 +125,13 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time", 1),
         ("SMOOTH", "Smooth", "Anisotropic reconstruction reduces particle-scale bumps; slower and can join narrow gaps", 2),
     ], default="FINAL")
-    droplet_scale: FloatProperty(name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
+    droplet_scale: FloatProperty(update=_surface_update, name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
                                  description="Size of detached droplets of one to three particles in the surface mesh. "
                                              "1 keeps their particle volume; smaller values draw splashes as finer spray")
-    surface_smoothing: FloatProperty(name="Surface Smoothing", default=0.4, min=0, max=1, subtype="FACTOR",
+    surface_smoothing: FloatProperty(update=_surface_update, name="Surface Smoothing", default=0.4, min=0, max=1, subtype="FACTOR",
                                      description="Extra filtering of the surface mesh that removes particle-scale dimples "
                                                  "while restoring each body's volume; costs meshing time and softens fine detail")
-    surface_velocity: BoolProperty(name="Surface Motion Vectors", default=True,
+    surface_velocity: BoolProperty(update=_surface_update, name="Surface Motion Vectors", default=True,
                                    description="Store a velocity for every surface vertex so renders can motion-blur "
                                                "the liquid; increases cache size by about a third")
     speed: FloatProperty(name="Simulation Speed", default=1, min=0.01, max=10)

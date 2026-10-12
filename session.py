@@ -47,6 +47,7 @@ class Session:
         self.phase = "STARTING"
         self._prepared = None
         self.paused = False
+        self._remesh = False
         self.stopping = False
         self.error = None
         self._cleanup_retry_at = 0
@@ -154,6 +155,14 @@ class Session:
             self.cache.write(header["frame"], response, result)
         return response, result
 
+    def _snapshot(self, update, frame, surface):
+        """The held frame again, meshed with the current surface settings; no time passes."""
+        if update is not None:
+            self.bridge.request("update", {"settings": update})
+        response, result = self.bridge.request("snapshot", {"surface": surface, "frame": frame})
+        response["frame"] = frame
+        return response, result
+
     def request_stop(self):
         if self.stopping:
             return
@@ -234,6 +243,9 @@ class Session:
                     display.apply(self.scene, self.domain, *result)
                     if requested:
                         return True
+                elif self.phase == "SNAPSHOT":
+                    self.last_response = result[0]
+                    display.apply(self.scene, self.domain, *result)
                 elif self.phase == "CLOSING":
                     self.executor.shutdown(wait=False)
                     if self.error:
@@ -264,6 +276,19 @@ class Session:
             # If the pool refuses this submit, _timer's synchronous abort path
             # remains available; cleanup does not depend on a working executor.
             self._submit(self._close)
+        elif self.paused and self._remesh and self.last_response is not None:
+            # A surface setting changed while paused: show it on the frame the
+            # solver is holding instead of waiting for the next one.
+            self._remesh = False
+            try:
+                settings = exporters.settings(self.scene, self.domain)
+                update = settings if settings != self.last_settings else None
+                self.last_settings = settings
+                self.phase = "SNAPSHOT"
+                self._submit(self._snapshot, update, self.last_response.get("frame", self.frame - 1),
+                             self.recording or self.domain.fumaris_liquid.display == "SURFACE", work=True)
+            except Exception as exc:
+                self.domain.fumaris_liquid.runtime_warning = str(exc)
         elif self.paused:
             self.domain.fumaris_liquid.status = "Paused — solver state retained"
         else:
@@ -290,6 +315,12 @@ class Session:
             if self.error is None:
                 self.error = str(exc)
             raise
+
+
+def surface_changed(domain):
+    """A surface setting of this domain was edited; a paused session re-meshes its held frame."""
+    if _active is not None and _active.domain == domain and _active.paused and not _active.stopping:
+        _active._remesh = True
 
 
 def _timer():

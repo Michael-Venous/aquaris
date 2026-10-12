@@ -174,6 +174,12 @@ of at least half a particle radius and encloses a few percent more volume than
 Smooth in splashing liquid. Final: 6 iterations and the Smooth mesh. Every
 setting stays editable afterwards.
 
+The surface settings (cell, Mesh Quality, Droplet Size, Surface Smoothing,
+motion vectors) can be changed during a run. They apply from the next frame;
+while paused, the frame the solver is holding is meshed again at once with
+the new settings, without advancing the simulation. They are fixed during a
+bake.
+
 ## Limits and surface detail
 
 **Automatic Limits** (on by default) lets a domain use up to the solver's own

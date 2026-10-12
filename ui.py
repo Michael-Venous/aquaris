@@ -211,7 +211,9 @@ def _draw(layout, context):
         box = _section(layout, "display", "Surface and Display", closed=True)
         if box is not None:
             structural = box.column()
-            structural.enabled = running is None
+            # Applied to the next frame of a run, and at once to the held frame
+            # of a paused one; fixed during a bake so its frames stay alike.
+            structural.enabled = running is None or not running.bake
             structural.prop(p, "mesh_cell_relative")
             structural.prop(p, "mesh_cell_factor" if p.mesh_cell_relative else "mesh_cell_size")
             cells = structural.row()
