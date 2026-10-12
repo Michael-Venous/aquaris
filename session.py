@@ -145,7 +145,7 @@ class Session:
         # too; when nothing is recorded that surface never becomes a Blender mesh.
         header["surface"] = self.recording or p.display in {"SURFACE", "PREVIEW"}
         header["normals"] = p.display == "PREVIEW"
-        header["_preview_only"] = p.display == "PREVIEW" and not self.recording
+        header["_preview_only"] = header["viewport_only"] = p.display == "PREVIEW" and not self.recording
         self.export_ms = (time.perf_counter() - started) * 1000
         settings = self._settings()
         update = settings if settings != self.last_settings else None

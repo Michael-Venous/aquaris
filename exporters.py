@@ -70,6 +70,7 @@ def settings(scene, domain):
     scale = max(1e-8, scene.unit_settings.scale_length)
     return {
         "speed_ceiling": p.jet_limit,
+        "flip_blend": p.flip_ratio,
         "particle_radius": p.particle_radius,
         "substeps": p.substeps,
         "max_particles": limits(p)[0],

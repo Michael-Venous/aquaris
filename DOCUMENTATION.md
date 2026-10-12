@@ -62,7 +62,7 @@ Particle radius sets the liquid sampling spacing (twice the radius). Smaller
 values produce more particles and more work. Surface cell size controls output
 mesh detail independently. Radius, particle budgets, region and mesh sizing
 should be chosen before starting; their UI is disabled while running. Gravity,
-Substeps, Simulation Speed and Jet Limit can be adjusted while playing.
+Substeps, Simulation Speed, FLIP Ratio and Jet Limit can be adjusted while playing.
 **Substeps** is the fewest steps the solver takes per frame; it adds more by
 itself when the liquid or a collider moves fast, so 1 is enough for most
 scenes. Gravity is entered in metres per second squared and is
@@ -174,6 +174,13 @@ divergence-free there with a pressure solve, and moves the particles with the
 result. The solver takes a few steps a frame however fast the liquid moves;
 15,000 to 25,000 particles play back live on a mid-range graphics card, and
 about 100,000 take roughly 100 ms a frame on an RTX 4060 Ti.
+
+**FLIP Ratio** (Simulation, default 0.95) sets how lively the liquid is. Each
+step a particle takes that share of its new velocity from the change the grid
+computed (FLIP: keeps detail and energy, but particle velocities get noisy)
+and the rest from the grid's own smooth velocity (PIC: calm, looks thicker
+and damped). 0.95 suits splashes; lower it for calm or slow liquid, raise it
+towards 1 for the most energetic spray. It can be changed while playing.
 
 The grid is a window fitted to the liquid before every step. There is no
 fixed domain box and no wall at the edge of the region: liquid is held only by

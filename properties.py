@@ -45,6 +45,11 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_object: PointerProperty(type=bpy.types.Object)
     particle_object: PointerProperty(type=bpy.types.Object)
     mist_object: PointerProperty(type=bpy.types.Object)
+    flip_ratio: FloatProperty(name="FLIP Ratio", default=0.95, min=0, max=1, precision=2, subtype="FACTOR",
+                              description="How lively the liquid is. Each step a particle takes this share of its velocity from the "
+                                          "change the grid computed (FLIP: keeps detail and energy, noisier) and the rest from the grid's "
+                                          "own smooth velocity (PIC: calm, thicker-looking). 0.95 suits splashes; lower it for calm or "
+                                          "slow liquid, raise it towards 1 for the most energetic spray. Can be changed while running")
     jet_limit: FloatProperty(name="Jet Limit", default=2.0, min=0, max=10, precision=2,
                              description="Fastest speed allowed, as a multiple of what the liquid could reach from "
                                          "its fall and the speed it was emitted or pushed at. Thin jets focus energy and can "

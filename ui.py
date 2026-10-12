@@ -164,7 +164,7 @@ def _draw(layout, context):
             structural = box.column()
             structural.enabled = running is None
             structural.prop(p, "particle_radius")
-            for name in ("substeps", "speed", "gravity", "jet_limit"):
+            for name in ("substeps", "speed", "gravity", "flip_ratio", "jet_limit"):
                 box.prop(p, name)
             note = box.column(align=True)
             for line in textwrap.wrap(UNAVAILABLE, width=max(24, int(context.region.width / 7) - 8) if context.region else 48):
