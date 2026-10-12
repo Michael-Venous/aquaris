@@ -126,6 +126,26 @@ The runtime supports 31 effectors and 32 outflows. Collider surfaces are sampled
 up to 4,000,000 samples; finer particle radii need more of them and more GPU
 memory.
 
+## Solver
+
+**Solver** chooses how the liquid is simulated; restart to change.
+
+**Particles** is the position-based solver every other part of this document
+describes. It supports viscosity, surface tension, whitewater and effectors.
+
+**Grid (experimental)** moves the same particles with a pressure solve on a
+grid whose cell is four particle radii. It is about ten times faster per
+particle (188,000 particles: 34 ms a frame against 318 ms on an RTX 4060 Ti)
+and takes a few steps a frame however fast the liquid moves. At the same
+Particle Radius it resolves about half the detail of the particle solver:
+splash rims are thicker and lower, so halve the radius for comparable detail.
+It has no viscosity, surface tension, whitewater or effectors yet; those
+settings are greyed. Colliders must be meshes whose face normals point out of
+the solid towards the liquid (Blender's default for boxes and spheres).
+Liquid squeezed into a narrow gap, such as the dam-break preset's block beside
+its walls, is thrown upward more strongly than with the particle solver;
+**Jet Limit** caps speed at a multiple of what the liquid's energy allows.
+
 ## Draft and Final
 
 The **Draft** and **Final** buttons under the domain's status set the settings
