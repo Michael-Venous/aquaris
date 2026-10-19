@@ -10,7 +10,7 @@ bl_info = {
     "category": "Physics",
 }
 
-from . import properties, operators, ui, session, preview
+from . import properties, operators, ui, session, preview, playback
 
 
 def register():
@@ -19,9 +19,11 @@ def register():
     session.register()
     ui.register()
     preview.register()
+    playback.register()
 
 
 def unregister():
+    playback.unregister()
     preview.unregister()
     session.unregister()
     ui.unregister()
