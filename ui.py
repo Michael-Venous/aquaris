@@ -231,6 +231,7 @@ def _draw(layout, context):
             row = editable.row(align=True)
             row.operator("fumaris_liquid.cache", text="Load Frame", icon="IMPORT").action = "LOAD"
             row.operator("fumaris_liquid.cache", text="Delete Slot", icon="TRASH").action = "DELETE"
+            box.operator("fumaris_liquid.rebuild_surface", icon="MOD_REMESH")
             editable.operator("fumaris_liquid.export_alembic", icon="EXPORT")
 
 

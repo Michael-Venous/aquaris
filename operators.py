@@ -145,6 +145,79 @@ class LIQUID_OT_cache(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class LIQUID_OT_rebuild_surface(bpy.types.Operator):
+    bl_idname = "fumaris_liquid.rebuild_surface"
+    bl_label = "Rebuild Surface"
+    bl_description = ("Mesh every baked frame again with the current Surface settings, without simulating again: "
+                      "particles and whitewater stay as baked. Esc stops after the frame in hand")
+
+    @classmethod
+    def poll(cls, context):
+        return domain_for(context) is not None and session.active() is None
+
+    def invoke(self, context, event):
+        from . import remesh
+        domain = domain_for(context)
+        try:
+            self._rebuild = remesh.Rebuild(context.scene, domain)
+        except Exception as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self._domain = domain
+        self._timer = context.window_manager.event_timer_add(0.001, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        context.window_manager.progress_begin(0, len(self._rebuild.frames))
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        # Without a window (scripts, background): the whole slot at once.
+        from . import remesh
+        domain = domain_for(context)
+        rebuild = remesh.Rebuild(context.scene, domain)
+        try:
+            while not rebuild.step():
+                pass
+        finally:
+            rebuild.close()
+        self._show(context, domain, len(rebuild.frames))
+        return {"FINISHED"}
+
+    def _show(self, context, domain, count):
+        domain.fumaris_liquid.status = f"Surface rebuilt on {count} baked frames"
+        try:
+            header, payload = session.cache_for(domain).read(context.scene.frame_current)
+            display.apply(context.scene, domain, header, payload)
+        except (FileNotFoundError, OSError):
+            pass
+
+    def _finish(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
+        self._rebuild.close()
+
+    def modal(self, context, event):
+        if event.type == "ESC":
+            self._finish(context)
+            self._domain.fumaris_liquid.status = f"Surface rebuild stopped after {self._rebuild.done} of {len(self._rebuild.frames)} frames"
+            return {"CANCELLED"}
+        if event.type != "TIMER":
+            return {"PASS_THROUGH"}
+        try:
+            done = self._rebuild.step()
+        except Exception as exc:
+            self._finish(context)
+            self.report({"ERROR"}, str(exc))
+            self._domain.fumaris_liquid.last_error = str(exc)
+            return {"CANCELLED"}
+        context.window_manager.progress_update(self._rebuild.done)
+        self._domain.fumaris_liquid.status = f"Rebuilding the surface: frame {self._rebuild.done} of {len(self._rebuild.frames)}"
+        if done:
+            self._finish(context)
+            self._show(context, self._domain, len(self._rebuild.frames))
+            return {"FINISHED"}
+        return {"RUNNING_MODAL"}
+
+
 class LIQUID_OT_export_alembic(bpy.types.Operator):
     bl_idname = "fumaris_liquid.export_alembic"
     bl_label = "Export Surface Alembic"
@@ -254,7 +327,7 @@ class LIQUID_OT_diagnostics(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_export_alembic, LIQUID_OT_quality, LIQUID_OT_diagnostics)
+classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_rebuild_surface, LIQUID_OT_export_alembic, LIQUID_OT_quality, LIQUID_OT_diagnostics)
 
 
 def register():
