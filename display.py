@@ -546,6 +546,8 @@ def apply(scene, domain, header, payload):
             p.surface_object.data.clear_geometry()
         _mesh(p.particle_object.data, positions)
         _attribute(p.particle_object.data, "velocity", block(header, payload, "velocities"))
+        # A particle's number from its birth to its removal: stable across frames, for instancing and Geometry Nodes.
+        _attribute(p.particle_object.data, "id", block(header, payload, "ids", 1, True), True)
         _mesh(p.whitewater_object.data, whitewater)
         _attribute(p.whitewater_object.data, "velocity", block(header, payload, "whitewater_velocities"))
         _attribute(p.whitewater_object.data, "whitewater_type", block(header, payload, "whitewater_types", 1, True), True)

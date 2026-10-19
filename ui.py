@@ -192,6 +192,8 @@ def _draw(layout, context):
             box.label(text="Initial GPU region (auto expands)")
             box.prop(p, "bounds_min")
             box.prop(p, "bounds_max")
+            box.label(text="Walls at the region's sides")
+            box.row(align=True).prop(p, "domain_walls")
             box.prop(p, "remove_strays")
         box = _section(layout, "display", "Surface and Display", closed=True)
         if box is not None:

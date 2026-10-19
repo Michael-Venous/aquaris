@@ -65,6 +65,15 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
     bounds_max: FloatVectorProperty(name="Maximum", default=(3, 2, 4), size=3,
                                    subtype="XYZ", description="World-space initial GPU region; expands automatically")
+    domain_walls: EnumProperty(name="Walls", options={'ENUM_FLAG'}, default=set(),
+                               items=(("X_MIN", "-X", "Close the side at the region's minimum X"),
+                                      ("X_MAX", "+X", "Close the side at the region's maximum X"),
+                                      ("Y_MIN", "-Y", "Close the side at the region's minimum Y"),
+                                      ("Y_MAX", "+Y", "Close the side at the region's maximum Y"),
+                                      ("Z_MIN", "-Z", "Close the floor at the region's minimum Z"),
+                                      ("Z_MAX", "+Z", "Close the top at the region's maximum Z")),
+                               description="Sides of the region that are solid walls, as a collider would be; open sides "
+                                           "let the liquid leave. Restart to change")
     remove_strays: BoolProperty(name="Remove Escaped Liquid", default=True,
                                 description="Remove liquid that has fallen or been thrown well clear of every collider, emitter and the region above; it cannot come back, and would otherwise be simulated for as long as it keeps falling")
     auto_budgets: BoolProperty(name="Automatic Limits", default=True,

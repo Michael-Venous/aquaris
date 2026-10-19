@@ -87,6 +87,37 @@ def settings(scene, domain):
     }
 
 
+def domain_walls(p):
+    """The closed sides of the region as one mesh, faces towards the inside (a collider's geometry tuple).
+
+    Each side reaches a few particle radii past the region's edges, so that two
+    closed sides meet without a gap along their common edge.
+    """
+    low, high = np.array(p.bounds_min, dtype=np.float64), np.array(p.bounds_max, dtype=np.float64)
+    reach = 4.0 * p.particle_radius
+    vertices, triangles = [], []
+    for axis in range(3):
+        u, v = (axis + 1) % 3, (axis + 2) % 3
+        for side, name in ((0, "MIN"), (1, "MAX")):
+            if "XYZ"[axis] + "_" + name not in p.domain_walls:
+                continue
+            plane = high[axis] if side else low[axis]
+            corners = []
+            for a, b in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                point = np.empty(3)
+                point[axis] = plane
+                point[u] = (high[u] + reach) if a else (low[u] - reach)
+                point[v] = (high[v] + reach) if b else (low[v] - reach)
+                corners.append(point)
+            first = len(vertices)
+            vertices += corners
+            # (u, v, axis) is right-handed: counter-clockwise in (u, v) faces +axis, the inside of the minimum side.
+            quad = [(0, 1, 2), (0, 2, 3)] if not side else [(0, 2, 1), (0, 3, 2)]
+            triangles += [[first + i for i in t] for t in quad]
+    return (np.array(vertices, dtype=np.float64).reshape(-1, 3), np.array(triangles, dtype=np.int32).reshape(-1, 3),
+            np.identity(4), None, None)
+
+
 def pack_blocks(arrays):
     blocks = {}
     payload = bytearray()
@@ -820,6 +851,15 @@ class SceneExporter:
                                 emitted_count += len(clipped)
             if props.role == "EMITTER" and repetitions and source_emitted:
                 self.initialized.add(obj.as_pointer())
+        if p.domain_walls:
+            key = "domain_walls"
+            geometry = domain_walls(p)
+            positions, velocities = self._boundary(self.domain, None, geometry, p.particle_radius, key)
+            current[key] = (geometry[0], geometry[2], geometry[1])
+            boundary_parts.append((key, id(positions), key in self.boundary_unmoved, len(positions)))
+            boundary.append(positions)
+            boundary_velocity.append(velocities)
+            boundary_normal.append(self.boundary_normals[key])
         self.source_volume_cache = {key: value for key, value in self.source_volume_cache.items()
                                     if key in self.source_volume_active}
         self.source_phase = self.source_phase_updates.copy()
