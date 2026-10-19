@@ -566,7 +566,14 @@ def apply(scene, domain, header, payload):
         p.runtime_warning = "GPU mesher could not take this frame and Fast was used: " + str(header["mesh_fallback"])[:160]
 
 
+# Set while an export plays the cache through: the outputs being exported must stay visible (a hidden object is
+# not selected, so not exported) whatever the display mode would show.
+exporting = False
+
+
 def update_visibility(domain):
+    if exporting:
+        return
     p = domain.fumaris_liquid
     for obj, hidden in ((p.surface_object, p.display != "SURFACE"),
                         (p.particle_object, p.display != "PARTICLES"),

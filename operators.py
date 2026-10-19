@@ -220,9 +220,14 @@ class LIQUID_OT_rebuild_surface(bpy.types.Operator):
 
 class LIQUID_OT_export_alembic(bpy.types.Operator):
     bl_idname = "fumaris_liquid.export_alembic"
-    bl_label = "Export Surface Alembic"
-    bl_description = "Export the selected slot's cached surface over its saved frame range"
+    bl_label = "Export Alembic"
+    bl_description = "Export the selected slot's cached surface, particles or whitewater over its saved frame range"
     filepath: bpy.props.StringProperty(subtype="FILE_PATH", default="liquid_surface.abc")
+    content: EnumProperty(name="Content", options={"ENUM_FLAG"}, default={"SURFACE"}, items=[
+        ("SURFACE", "Surface", "The meshed liquid surface, with its motion vectors"),
+        ("PARTICLES", "Particles", "The liquid particles as points, with velocity and id"),
+        ("WHITEWATER", "Whitewater", "Spray, foam and bubbles as points, with velocity and whitewater_type"),
+    ])
 
     @classmethod
     def poll(cls, context):
@@ -237,6 +242,8 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
         selected, current = list(context.selected_objects), context.view_layer.objects.active
         old_playback = domain.fumaris_liquid.cache_playback
         old_frame = context.scene.frame_current
+        muted = []  # (modifier, show_viewport, show_render) of the point outputs' display modifiers
+        render_hidden = []  # outputs hidden from renders by the display mode: Alembic skips those
         try:
             frames = session.cache_for(domain).frames()
             if not frames:
@@ -244,10 +251,26 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
             if frames != list(range(frames[0], frames[-1] + 1)):
                 raise RuntimeError("Alembic export requires a contiguous cache range")
             display.ensure_outputs(context.scene, domain)
+            if not self.content:
+                raise RuntimeError("Choose what to export")
+            p = domain.fumaris_liquid
+            chosen = [obj for flag, obj in (("SURFACE", p.surface_object), ("PARTICLES", p.particle_object),
+                                            ("WHITEWATER", p.whitewater_object)) if flag in self.content]
             for obj in selected:
                 obj.select_set(False)
-            domain.fumaris_liquid.surface_object.select_set(True)
-            context.view_layer.objects.active = domain.fumaris_liquid.surface_object
+            for obj in chosen:
+                obj.hide_set(False)  # (a hidden output is not exported)
+                if obj.hide_render:
+                    render_hidden.append(obj)
+                    obj.hide_render = False
+                obj.select_set(True)
+                if obj != p.surface_object:
+                    # Points are exported as points: the display modifiers (spheres, mist) would replace them.
+                    for modifier in obj.modifiers:
+                        muted.append((modifier, modifier.show_viewport, modifier.show_render))
+                        modifier.show_viewport = modifier.show_render = False
+            context.view_layer.objects.active = chosen[0]
+            display.exporting = True
             domain.fumaris_liquid.cache_playback = True
             bpy.ops.wm.alembic_export(filepath=bpy.path.abspath(self.filepath),
                                      start=frames[0], end=frames[-1], selected=True,
@@ -256,8 +279,14 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
         finally:
+            display.exporting = False
+            for obj in render_hidden:
+                obj.hide_render = True
+            for modifier, viewport, render in muted:
+                modifier.show_viewport, modifier.show_render = viewport, render
             context.scene.frame_set(old_frame)
             domain.fumaris_liquid.cache_playback = old_playback
+            display.update_visibility(domain)  # which outputs show follows the display mode again
             for obj in context.selected_objects:
                 obj.select_set(False)
             for obj in selected:
