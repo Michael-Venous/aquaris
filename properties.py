@@ -39,7 +39,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("EMITTER", "Emitter", "Create liquid particles"),
         ("COLLIDER", "Collider", "A sampled solid collision surface"),
         ("OUTFLOW", "Outflow", "Remove liquid inside the evaluated bounding box"),
-        ("EFFECTOR", "Effector", "Force field. Not available in this version: a simulation with an enabled effector does not start"),
+        ("EFFECTOR", "Effector", "Force field around this object: force, wind, vortex or turbulence"),
     ], default="NONE")
     enabled: BoolProperty(name="Enabled", default=True,
                           description="Animate to enable or disable this participant")
@@ -229,6 +229,18 @@ class LiquidProperties(bpy.types.PropertyGroup):
     ], default="XY")
     mask_scale: FloatVectorProperty(name="Mask Scale", default=(1, 1, 1), size=3)
     mask_offset: FloatVectorProperty(name="Mask Offset", default=(0, 0, 0), size=3)
+    # Effectors: the same names as before 0.3.0, so scenes made then keep their fields.
+    effector_kind: EnumProperty(name="Force", items=[
+        ("FORCE", "Force", "A uniform acceleration (Acceleration times Strength) within the radius"),
+        ("WIND", "Wind", "Acceleration along the object's local Z within the radius"),
+        ("VORTEX", "Vortex", "Swirl around the object's local Z within the radius; Strength is the acceleration along the swirl"),
+        ("TURBULENCE", "Turbulence", "Moving, spatially varying gusts a quarter of the radius across"),
+    ], default="WIND")
+    force_vector: FloatVectorProperty(name="Acceleration", default=(0, 0, 1), size=3, subtype="ACCELERATION")
+    force_strength: FloatProperty(name="Strength", default=5, min=-1000, max=1000, soft_min=-50, soft_max=50,
+                                  description="Acceleration in m/s² (gravity is 9.81); negative reverses the field")
+    force_radius: FloatProperty(name="Radius", default=2, min=0.01, subtype="DISTANCE",
+                                description="Reach of the field around the object: full strength to three quarters of it, fading out by the radius")
 
 
 def register():

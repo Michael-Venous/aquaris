@@ -743,11 +743,8 @@ class SceneExporter:
         emission_batches = []
         emitted_count = 0
         excluded_count = 0
-        outflows, current = [], {}
+        outflows, forces, current = [], [], {}
         objects = list(participants(self.scene, self.domain))
-        # Refused before anything is sampled: the solver has no force fields.
-        if any(obj.fumaris_liquid.role == "EFFECTOR" and obj.fumaris_liquid.enabled for obj in objects):
-            raise RuntimeError("The grid solver does not support effectors yet; empty the effector collection")
         collider_geometry, solids, solid_keys = {}, [], set()
         # Evaluate solids before emitters regardless of collection/object order.
         # Geometry is reused below, so this adds no second Blender evaluation.
@@ -775,6 +772,16 @@ class SceneExporter:
             if props.role == "EMITTER" and props.emission_mode == "INITIAL" and obj.as_pointer() in self.initialized:
                 continue
             evaluated = obj.evaluated_get(depsgraph)
+            if props.role == "EFFECTOR":
+                # Centre at the object, axis its local Z; accelerations in the scene's length unit.
+                scale = max(1e-8, self.scene.unit_settings.scale_length)
+                axis = (evaluated.matrix_world.to_3x3() @ Vector((0, 0, 1))).normalized()
+                forces.append({"kind": props.effector_kind, "center": list(evaluated.matrix_world.translation),
+                               "vector": list(props.force_vector) if props.effector_kind == "FORCE" else list(axis),
+                               "strength": props.force_strength / scale, "radius": props.force_radius})
+                if len(forces) > 31:
+                    raise RuntimeError("A simulation supports at most 31 effectors")
+                continue
             if props.role == "OUTFLOW":
                 corners = np.asarray([tuple(evaluated.matrix_world @ Vector(v)) for v in evaluated.bound_box])
                 outflows.append([corners.min(axis=0).tolist(), corners.max(axis=0).tolist()])
@@ -948,4 +955,4 @@ class SceneExporter:
                 "reuse_boundaries": reuse,
                 **({"boundary_patches": patches} if patches is not None else {}),
                 "boundary_motion_from_velocity": self.boundary_motion_from_velocity,
-                "outflows": outflows}, payload
+                "outflows": outflows, "forces": forces}, payload

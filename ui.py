@@ -7,7 +7,6 @@ from . import operators, session
 
 
 # The one line the panel shows for what this version does not simulate.
-UNAVAILABLE = "Force fields are not available in this version."
 
 
 def _control(layout, text, action, icon):
@@ -62,8 +61,11 @@ def _participant(layout, context):
                 for name in ("mask_scale", "mask_offset", "mask_threshold"):
                     mask.prop(p, name)
     elif p.role == "EFFECTOR":
-        box.label(text="Force fields are not available in this version", icon="INFO")
-        box.label(text="Disable or remove it to simulate")
+        box.prop(p, "effector_kind")
+        if p.effector_kind == "FORCE":
+            box.prop(p, "force_vector")
+        box.prop(p, "force_strength")
+        box.prop(p, "force_radius")
     elif p.role == "OUTFLOW":
         box.label(text="Removes particles inside the world bounding box")
     elif p.role == "COLLIDER":
@@ -171,9 +173,6 @@ def _draw(layout, context):
             row.enabled = p.viscosity_preset == "CUSTOM"
             row.prop(p, "viscosity")
             box.prop(p, "surface_tension")
-            note = box.column(align=True)
-            for line in textwrap.wrap(UNAVAILABLE, width=max(24, int(context.region.width / 7) - 8) if context.region else 48):
-                note.label(text=line)
         box = _section(layout, "whitewater", "Whitewater", closed=True)
         if box is not None:
             box.prop(p, "whitewater_generate")
