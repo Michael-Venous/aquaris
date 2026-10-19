@@ -18,6 +18,14 @@ def _surface_update(self, context):
         session.surface_changed(self.id_data)
 
 
+VISCOSITY_PRESETS = {"WATER": 0.0, "OIL": 1e-4, "HONEY": 5e-3, "CHOCOLATE": 2e-2, "THICK": 0.2}
+
+
+def _viscosity_preset(self, context):
+    if self.viscosity_preset in VISCOSITY_PRESETS:
+        self.viscosity = VISCOSITY_PRESETS[self.viscosity_preset]
+
+
 def _look_update(self, context):
     if self.role == "DOMAIN":
         from . import display
@@ -45,6 +53,16 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_object: PointerProperty(type=bpy.types.Object)
     particle_object: PointerProperty(type=bpy.types.Object)
     mist_object: PointerProperty(type=bpy.types.Object)
+    viscosity_preset: EnumProperty(name="Viscosity Preset", update=_viscosity_preset, default="WATER", items=[
+        ("WATER", "Water", "No viscosity: at the resolutions a grid this size reaches, water's own (1e-6 m²/s) has no visible effect"),
+        ("OIL", "Oil", "1e-4 m²/s"),
+        ("HONEY", "Honey", "5e-3 m²/s"),
+        ("CHOCOLATE", "Molten Chocolate", "2e-2 m²/s"),
+        ("THICK", "Thick", "0.2 m²/s: a slow, heavy flow"),
+        ("CUSTOM", "Custom", "Set Viscosity yourself")])
+    viscosity: FloatProperty(name="Viscosity", default=0, min=0, max=100, soft_max=1, precision=5, step=0.01,
+                             description="Kinematic viscosity in m²/s (dynamic viscosity divided by density); 0 for water. "
+                                         "Slows, smooths and sticks the liquid to colliders; it does not make it coil. Can be changed while running")
     flip_ratio: FloatProperty(name="FLIP Ratio", default=0.95, min=0, max=1, precision=2, subtype="FACTOR",
                               description="How lively the liquid is. Each step a particle takes this share of its velocity from the "
                                           "change the grid computed (FLIP: keeps detail and energy, noisier) and the rest from the grid's "

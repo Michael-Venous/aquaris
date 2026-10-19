@@ -7,7 +7,7 @@ from . import operators, session
 
 
 # The one line the panel shows for what this version does not simulate.
-UNAVAILABLE = "Viscosity, surface tension and force fields are not available in this version."
+UNAVAILABLE = "Surface tension and force fields are not available in this version."
 
 
 def _control(layout, text, action, icon):
@@ -166,6 +166,10 @@ def _draw(layout, context):
             structural.prop(p, "particle_radius")
             for name in ("substeps", "step_size", "speed", "gravity", "flip_ratio"):
                 box.prop(p, name)
+            box.prop(p, "viscosity_preset")
+            row = box.row()
+            row.enabled = p.viscosity_preset == "CUSTOM"
+            row.prop(p, "viscosity")
             note = box.column(align=True)
             for line in textwrap.wrap(UNAVAILABLE, width=max(24, int(context.region.width / 7) - 8) if context.region else 48):
                 note.label(text=line)
