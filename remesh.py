@@ -15,7 +15,7 @@ def _blocks(header, payload):
     """{name: raw little-endian bytes} of every block in a frame."""
     out = {}
     for name, block in header.get("blocks", {}).items():
-        width = 1 if name in protocol.UINT_FIELDS else 3
+        width = protocol.width(name)
         start, count = int(block["offset"]), int(block["count"])
         end = start + count * width * 4
         if start < 0 or count < 0 or end > len(payload):
@@ -27,7 +27,7 @@ def _blocks(header, payload):
 def _pack(blocks):
     header, payload = {}, bytearray()
     for name, data in blocks.items():
-        width = 1 if name in protocol.UINT_FIELDS else 3
+        width = protocol.width(name)
         header[name] = {"offset": len(payload), "count": len(data) // (4 * width)}
         payload.extend(data)
     return header, bytes(payload)

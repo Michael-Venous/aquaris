@@ -510,13 +510,19 @@ def _mesh(mesh, positions, triangles=None):
     mesh.update()
 
 
-def _attribute(mesh, name, values, integer=False):
+def _attribute(mesh, name, values, integer=False, scalar=False):
+    """A point attribute: a vector, or with `integer` / `scalar` one int / float per point."""
     if len(values) != len(mesh.vertices):
         return
+    kind = "INT" if integer else "FLOAT" if scalar else "FLOAT_VECTOR"
     attr = mesh.attributes.get(name)
+    if attr is not None and attr.data_type != kind:
+        mesh.attributes.remove(attr)
+        attr = None
     if attr is None:
-        attr = mesh.attributes.new(name, "INT" if integer else "FLOAT_VECTOR", "POINT")
-    attr.data.foreach_set("value" if integer else "vector", np.asarray(values, dtype=np.int32 if integer else np.float32).ravel())
+        attr = mesh.attributes.new(name, kind, "POINT")
+    attr.data.foreach_set("vector" if kind == "FLOAT_VECTOR" else "value",
+                          np.asarray(values, dtype=np.int32 if integer else np.float32).ravel())
 
 
 def apply(scene, domain, header, payload):
@@ -548,9 +554,13 @@ def apply(scene, domain, header, payload):
         _attribute(p.particle_object.data, "velocity", block(header, payload, "velocities"))
         # A particle's number from its birth to its removal: stable across frames, for instancing and Geometry Nodes.
         _attribute(p.particle_object.data, "id", block(header, payload, "ids", 1, True), True)
+        # Seconds since the particle was emitted (to the frame), for colouring or fading by age.
+        _attribute(p.particle_object.data, "age", block(header, payload, "ages", 1), scalar=True)
         _mesh(p.whitewater_object.data, whitewater)
         _attribute(p.whitewater_object.data, "velocity", block(header, payload, "whitewater_velocities"))
         _attribute(p.whitewater_object.data, "whitewater_type", block(header, payload, "whitewater_types", 1, True), True)
+        # Seconds this whitewater particle has left (foam dissolves when it reaches 0), for fading it out.
+        _attribute(p.whitewater_object.data, "whitewater_life", block(header, payload, "whitewater_life", 1), scalar=True)
     update_visibility(domain)
     p.status = f"Frame {header.get('frame', scene.frame_current)} · {len(positions):,} liquid"
     if len(whitewater):

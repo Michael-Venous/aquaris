@@ -17,6 +17,13 @@ VEC3_FIELDS = frozenset({"positions", "velocities", "boundary_positions",
                         "whitewater_velocities"})
 UINT3_FIELDS = frozenset({"triangles"})
 UINT_FIELDS = frozenset({"whitewater_types", "ids"})
+# One float per point: a particle's age [s], a whitewater particle's remaining life [s].
+FLOAT_FIELDS = frozenset({"ages", "whitewater_life"})
+
+
+def width(name):
+    """Scalars per element of a block."""
+    return 1 if name in UINT_FIELDS or name in FLOAT_FIELDS else 3
 
 
 def _read_exact(stream, size):
@@ -65,7 +72,7 @@ def validate_blocks(header, payload):
     for field, block in header.get("blocks", {}).items():
         if field in VEC3_FIELDS or field in UINT3_FIELDS:
             stride = 12
-        elif field in UINT_FIELDS:
+        elif field in UINT_FIELDS or field in FLOAT_FIELDS:
             stride = 4
         else:
             raise ValueError("Unknown liquid array: " + field)
@@ -91,6 +98,8 @@ def pack_arrays(**fields):
             dtype, width = "I", 3
         elif name in UINT_FIELDS:
             dtype, width = "I", 1
+        elif name in FLOAT_FIELDS:
+            dtype, width = "f", 1
         else:
             raise ValueError("Unknown liquid array: " + name)
         if isinstance(values, (bytes, bytearray, memoryview)):
@@ -118,11 +127,10 @@ def pack_arrays(**fields):
 
 def unpack_array(header, payload, name):
     block = header.get("blocks", {}).get(name, {"offset": 0, "count": 0})
-    width = 1 if name in UINT_FIELDS else 3
-    dtype = "f" if name in VEC3_FIELDS else "I"
+    dtype = "f" if name in VEC3_FIELDS or name in FLOAT_FIELDS else "I"
     result = array.array(dtype)
     start = block["offset"]
-    result.frombytes(payload[start:start + block["count"] * width * 4])
+    result.frombytes(payload[start:start + block["count"] * width(name) * 4])
     if sys.byteorder != "little":
         result.byteswap()
     return result
