@@ -7,7 +7,7 @@ from . import operators, session
 
 
 # The one line the panel shows for what this version does not simulate.
-UNAVAILABLE = "Surface tension and force fields are not available in this version."
+UNAVAILABLE = "Force fields are not available in this version."
 
 
 def _control(layout, text, action, icon):
@@ -170,6 +170,7 @@ def _draw(layout, context):
             row = box.row()
             row.enabled = p.viscosity_preset == "CUSTOM"
             row.prop(p, "viscosity")
+            box.prop(p, "surface_tension")
             note = box.column(align=True)
             for line in textwrap.wrap(UNAVAILABLE, width=max(24, int(context.region.width / 7) - 8) if context.region else 48):
                 note.label(text=line)

@@ -63,6 +63,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
     viscosity: FloatProperty(name="Viscosity", default=0, min=0, max=100, soft_max=1, precision=5, step=0.01,
                              description="Kinematic viscosity in m²/s (dynamic viscosity divided by density); 0 for water. "
                                          "Slows, smooths and sticks the liquid to colliders; it does not make it coil. Can be changed while running")
+    surface_tension: FloatProperty(name="Surface Tension", default=0, min=0, max=1000, soft_max=50, precision=3, step=1,
+                                   description="Surface tension in N/m (water 0.073), taken with water's density. At the sizes a grid "
+                                               "this coarse resolves, water's own value shows little: raise it to make thin streams bead "
+                                               "and small bodies round off. High values take more substeps. Can be changed while running")
     flip_ratio: FloatProperty(name="FLIP Ratio", default=0.95, min=0, max=1, precision=2, subtype="FACTOR",
                               description="How lively the liquid is. Each step a particle takes this share of its velocity from the "
                                           "change the grid computed (FLIP: keeps detail and energy, noisier) and the rest from the grid's "
