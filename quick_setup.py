@@ -77,8 +77,8 @@ def _realtime(p):
     p.surface_smoothing = 1.0
     p.step_size = 3.0
     p.substeps = 1
-    # Nothing generates whitewater, so there is none to show.
-    p.whitewater = False
+    # Whitewater shows where it is generated; only the Splash generates it (about 3 ms a frame there).
+    p.whitewater = True
 
 
 def _detailed(p):
@@ -137,7 +137,8 @@ def create(context, preset="DAM_BREAK"):
         _detailed(p)
         preset = DETAILED[preset]
     if preset == "SPLASH":
-        # A ball dropped into a pool throws up a crown.
+        # A ball dropped into a pool throws up a crown, with spray, foam and bubbles.
+        p.whitewater_generate = True
         emitter = _box("Initial Pool", emitters, origin + Vector((0, 0, 0.26)), (3.94, 2.04, 0.5))
         emitter.fumaris_liquid.emission_mode = "INITIAL"
         ball = _sphere("Falling Ball", colliders, origin + Vector((0, 0, 2.0)), 0.32)

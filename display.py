@@ -553,7 +553,7 @@ def apply(scene, domain, header, payload):
         _attribute(p.whitewater_object.data, "whitewater_type", block(header, payload, "whitewater_types", 1, True), True)
     update_visibility(domain)
     p.status = f"Frame {header.get('frame', scene.frame_current)} · {len(positions):,} liquid"
-    if len(whitewater):  # Only a cache baked by an earlier version contains any.
+    if len(whitewater):
         p.status += f" · {len(whitewater):,} whitewater"
     if p.display == "PREVIEW":
         p.status += " · GPU preview"

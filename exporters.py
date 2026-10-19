@@ -84,6 +84,12 @@ def settings(scene, domain):
         "surface_smoothing": p.surface_smoothing,
         "surface_velocity": p.surface_velocity,
         "max_mesh_cells": limits(p)[2],
+        "whitewater_generate": p.whitewater_generate,
+        "whitewater_amount": p.whitewater_amount,
+        "whitewater_lifetime": p.whitewater_lifetime,
+        "whitewater_buoyancy": p.whitewater_buoyancy,
+        "whitewater_drag": p.whitewater_drag,
+        "max_whitewater": p.max_whitewater,
     }
 
 

@@ -81,10 +81,21 @@ class LiquidProperties(bpy.types.PropertyGroup):
     max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000)
     max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=4000000,
                               description="Collider surface samples accepted per frame; finer particles need more")
-    # This version generates no whitewater. The switch, size and mist remain
-    # for the foam, spray and bubbles stored in caches baked by earlier versions.
+    whitewater_generate: BoolProperty(name="Generate Whitewater", default=False,
+                                      description="Give off spray, foam and bubbles where liquid traps air or a wave crest breaks, "
+                                                  "from each frame's liquid particles. Can be changed while running")
+    whitewater_amount: FloatProperty(name="Amount", default=1, min=0, max=100, soft_max=10,
+                                     description="How many whitewater particles the liquid gives off; 1 is the default rate")
+    whitewater_lifetime: FloatProperty(name="Foam Lifetime", default=3, min=0.01, max=600, subtype="TIME_ABSOLUTE", unit="TIME_ABSOLUTE",
+                                       description="Mean seconds a foam particle lasts on the surface before it dissolves (each one lasts half to one and a half times this)")
+    whitewater_buoyancy: FloatProperty(name="Bubble Rise", default=2, min=0, max=20,
+                                       description="Upward acceleration of bubbles under the surface, in units of gravity")
+    whitewater_drag: FloatProperty(name="Bubble Drag", default=0.5, min=0, max=1,
+                                   description="How strongly bubbles are carried along with the liquid around them, per frame")
+    max_whitewater: IntProperty(name="Whitewater Budget", default=2000000, min=0, max=16000000,
+                                description="Most whitewater particles kept at once; generation slows to stay within it")
     whitewater: BoolProperty(name="Show Whitewater", default=True, update=_display_update,
-                             description="Show the foam, spray and bubbles stored in a cache baked by an earlier version. This version does not generate whitewater")
+                             description="Show the spray, foam and bubbles (generated, or stored in a cache)")
     whitewater_size: FloatProperty(name="Particle Size", default=2, min=0.1, max=20, update=_look_update,
                                    description="Rendered size of spray, foam and bubble particles. 1 is the size used before Aquaris 0.2.8; larger particles read as denser foam")
     whitewater_mist: FloatProperty(name="Mist", default=0, min=0, max=100, update=_look_update,

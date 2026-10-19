@@ -7,7 +7,7 @@ from . import operators, session
 
 
 # The one line the panel shows for what this version does not simulate.
-UNAVAILABLE = "Viscosity, surface tension, whitewater and force fields are not available in this version."
+UNAVAILABLE = "Viscosity, surface tension and force fields are not available in this version."
 
 
 def _control(layout, text, action, icon):
@@ -169,10 +169,13 @@ def _draw(layout, context):
             note = box.column(align=True)
             for line in textwrap.wrap(UNAVAILABLE, width=max(24, int(context.region.width / 7) - 8) if context.region else 48):
                 note.label(text=line)
-        box = _section(layout, "whitewater", "Whitewater from Earlier Caches", closed=True)
+        box = _section(layout, "whitewater", "Whitewater", closed=True)
         if box is not None:
-            # Nothing here simulates: these show the foam, spray and bubbles a
-            # cache baked by an earlier version contains.
+            box.prop(p, "whitewater_generate")
+            generation = box.column(align=True)
+            generation.enabled = p.whitewater_generate
+            for name in ("whitewater_amount", "whitewater_lifetime", "whitewater_buoyancy", "whitewater_drag", "max_whitewater"):
+                generation.prop(p, name)
             box.prop(p, "whitewater")
             look = box.column(align=True)
             look.enabled = p.whitewater
