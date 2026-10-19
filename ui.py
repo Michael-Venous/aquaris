@@ -265,14 +265,31 @@ class LIQUID_PT_sidebar(bpy.types.Panel):
         _draw(self.layout, context)
 
 
-classes = (LIQUID_PT_physics, LIQUID_PT_sidebar)
+class LIQUID_MT_add(bpy.types.Menu):
+    """Add > Aquaris Liquid: each Quick Setup at the 3D cursor, without the dialog."""
+    bl_idname = "LIQUID_MT_add"
+    bl_label = "Aquaris Liquid"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator_context = "EXEC_DEFAULT"
+        layout.operator_enum("fumaris_liquid.quick_setup", "preset")
+
+
+def _add_menu(self, context):
+    self.layout.menu("LIQUID_MT_add", icon="MOD_FLUIDSIM")
+
+
+classes = (LIQUID_PT_physics, LIQUID_PT_sidebar, LIQUID_MT_add)
 
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    bpy.types.VIEW3D_MT_add.append(_add_menu)
 
 
 def unregister():
+    bpy.types.VIEW3D_MT_add.remove(_add_menu)
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
