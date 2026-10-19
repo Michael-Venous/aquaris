@@ -97,6 +97,18 @@ def settings(scene, domain):
     }
 
 
+def _merged_normals(normals, group, count):
+    """The normal of each merged collider sample: the normalised sum of the face normals of every sample merged into
+    it. A sample on an edge two faces share stands for both; keeping the normal of whichever duplicate came first
+    made two bakes of the same scene differ (Blender's evaluated geometry does not come out in a fixed order), and
+    with them the liquid that meets that edge."""
+    summed = np.zeros((count, 3), dtype=np.float64)
+    for axis in range(3):
+        summed[:, axis] = np.bincount(group, weights=normals[:, axis], minlength=count)
+    length = np.linalg.norm(summed, axis=1, keepdims=True)
+    return (summed / np.maximum(length, 1e-30)).astype(normals.dtype)
+
+
 def domain_walls(p):
     """The closed sides of the region as one mesh, faces towards the inside (a collider's geometry tuple).
 
@@ -581,7 +593,7 @@ class SceneExporter:
                         if old_world is not None else np.zeros_like(result))
             normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
             normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-300)
-            self.boundary_normals[history_key] = facing * normal[owner]
+            self.boundary_normals[history_key] = _merged_normals(facing * normal[lattice[6]], lattice[7], len(owner))
             self.boundary_cache[history_key] = (world, triangles, spacing, result)
             return result, velocity
         # Every triangle gets a lattice of samples `spacing` apart in its own
@@ -646,12 +658,13 @@ class SceneExporter:
             velocities = np.zeros_like(points)
         normals = (facing * normal / safe_normal[:, None])[owner]
         # Shared-edge samples are intentionally deduplicated.
-        _, unique = np.unique(np.round(points / (spacing * 1e-5)).astype(np.int64), axis=0, return_index=True)
+        _, unique, group = np.unique(np.round(points / (spacing * 1e-5)).astype(np.int64), axis=0, return_index=True, return_inverse=True)
+        group = np.asarray(group).reshape(-1)
         result = points[unique]
-        self.boundary_normals[history_key] = normals[unique]
+        self.boundary_normals[history_key] = _merged_normals(normals, group, len(unique))
         self.boundary_cache[history_key] = (world, triangles, spacing, result)
         if len(unique):
-            self.boundary_lattice[history_key] = (triangles, spacing, edges, owner[unique], facing, weights[unique])
+            self.boundary_lattice[history_key] = (triangles, spacing, edges, owner[unique], facing, weights[unique], owner, group)
         return result, velocities[unique]
 
     def _points(self, obj, props, depsgraph):
