@@ -119,6 +119,8 @@ def create(context, preset="DAM_BREAK"):
     p.bake_end = scene.frame_current + 119
     p.mesh_cell_size = 0.035
     display.ensure_identity(domain)
+    # Initial liquid fills the basin's inside (x +-2, y +-1.05, floor z 0) to its walls: emission keeps
+    # a particle radius clear of them, so it starts at rest instead of falling into a gap.
     # Five actual solids create a basin; the domain allocation is not a wall.
     walls = [
         ("Basin Floor", (0, 0, -0.15), (4.5, 2.7, 0.3)),
@@ -139,7 +141,7 @@ def create(context, preset="DAM_BREAK"):
     if preset == "SPLASH":
         # A ball dropped into a pool throws up a crown, with spray, foam and bubbles.
         p.whitewater_generate = True
-        emitter = _box("Initial Pool", emitters, origin + Vector((0, 0, 0.26)), (3.94, 2.04, 0.5))
+        emitter = _box("Initial Pool", emitters, origin + Vector((0, 0, 0.25)), (4.0, 2.1, 0.5))
         emitter.fumaris_liquid.emission_mode = "INITIAL"
         ball = _sphere("Falling Ball", colliders, origin + Vector((0, 0, 2.0)), 0.32)
         ball.fumaris_liquid.role = "COLLIDER"
@@ -158,7 +160,7 @@ def create(context, preset="DAM_BREAK"):
     elif preset == "REALTIME_DAM_BREAK":
         # The block fills the basin's end from wall to wall, as in a dam-break
         # experiment, and runs into two pillars.
-        emitter = _box("Initial Liquid", emitters, origin + Vector((-1.28, 0, 0.56)), (1.4, 2.04, 1.1))
+        emitter = _box("Initial Liquid", emitters, origin + Vector((-1.3, 0, 0.55)), (1.4, 2.1, 1.1))
         emitter.fumaris_liquid.emission_mode = "INITIAL"
         for name, location, size in (("Pillar Near", (0.35, -0.42, 0.5), (0.3, 0.3, 1.0)),
                                      ("Pillar Far", (1.0, 0.38, 0.4), (0.36, 0.36, 0.8))):
@@ -167,7 +169,7 @@ def create(context, preset="DAM_BREAK"):
     else:
         # A shallow existing pool makes splashes and recovery visible from the
         # first second without spending the user's iteration time filling a tank.
-        pool = _box("Initial Pool", emitters, origin + Vector((0, 0, 0.30)), (3.7, 1.9, 0.35))
+        pool = _box("Initial Pool", emitters, origin + Vector((0, 0, 0.175)), (4.0, 2.1, 0.35))
         pool.fumaris_liquid.role = "EMITTER"
         pool.fumaris_liquid.source_shape = "BOX"
         pool.fumaris_liquid.emission_mode = "INITIAL"

@@ -230,9 +230,13 @@ class SceneExporter:
             for index in candidates:
                 position = positions[index]
                 hit, normal, face, nearest = bvh.find_nearest(Vector(position), margin)
-                # Match the native sampled shell's 2r contact clearance. Closed
-                # meshes also reject arbitrarily deep interior source samples;
-                # open meshes only reject points close to their actual surface.
+                # A particle closer to a collider's face than its own radius
+                # would be in it: the grid solver's colliders are one-sided
+                # faces at their samples, so liquid may be born touching one.
+                # (2 r, from the removed particle solver's sampled shell, left
+                # a gap under every pool, which it fell through at the start.)
+                # Closed meshes also reject arbitrarily deep interior source
+                # samples; open meshes only reject points close to their surface.
                 if hit is not None or (closed and _inside(bvh, position, epsilon, distance)):
                     keep[index] = False
         excluded = int(np.count_nonzero(~keep))
@@ -849,7 +853,7 @@ class SceneExporter:
                                 positions, velocities = self._volume(source, props, geometry, spacing, key,
                                                                      self.time + emission_time)
                             clipped, clipped_velocity, excluded = self._clip_birth_solids(
-                                positions, velocities, collider_geometry, solids, spacing, emission_time)
+                                positions, velocities, collider_geometry, solids, p.particle_radius, emission_time)
                             excluded_count += excluded
                             emitted.append(clipped)
                             emitted_velocity.append(clipped_velocity)
