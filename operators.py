@@ -218,6 +218,39 @@ class LIQUID_OT_rebuild_surface(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
 
+class LIQUID_OT_export_vdb(bpy.types.Operator):
+    bl_idname = "fumaris_liquid.export_vdb"
+    bl_label = "Export VDB"
+    bl_description = ("Write one OpenVDB file a baked frame into a folder: the surface as a level set, the liquid's "
+                      "density and its velocity, on voxels of the surface cell")
+    directory: bpy.props.StringProperty(subtype="DIR_PATH", default="//liquid_vdb/")
+
+    @classmethod
+    def poll(cls, context):
+        return domain_for(context) is not None and session.active() is None
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        from . import exporters, vdb_export
+        domain = domain_for(context)
+        p = domain.fumaris_liquid
+        try:
+            cache = session.cache_for(domain)
+            if not cache.frames():
+                raise RuntimeError("The selected cache slot contains no frames")
+            written = vdb_export.export(cache, bpy.path.abspath(self.directory), exporters.mesh_cell(p), p.particle_radius)
+        except Exception as exc:
+            self.report({"ERROR"}, str(exc))
+            p.last_error = str(exc)
+            return {"CANCELLED"}
+        p.status = f"Wrote {len(written)} VDB files"
+        self.report({"INFO"}, p.status)
+        return {"FINISHED"}
+
+
 class LIQUID_OT_export_alembic(bpy.types.Operator):
     bl_idname = "fumaris_liquid.export_alembic"
     bl_label = "Export Alembic"
@@ -356,7 +389,7 @@ class LIQUID_OT_diagnostics(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_rebuild_surface, LIQUID_OT_export_alembic, LIQUID_OT_quality, LIQUID_OT_diagnostics)
+classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_rebuild_surface, LIQUID_OT_export_vdb, LIQUID_OT_export_alembic, LIQUID_OT_quality, LIQUID_OT_diagnostics)
 
 
 def register():

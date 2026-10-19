@@ -233,6 +233,7 @@ def _draw(layout, context):
             row.operator("fumaris_liquid.cache", text="Delete Slot", icon="TRASH").action = "DELETE"
             box.operator("fumaris_liquid.rebuild_surface", icon="MOD_REMESH")
             editable.operator("fumaris_liquid.export_alembic", icon="EXPORT")
+            editable.operator("fumaris_liquid.export_vdb", icon="VOLUME_DATA")
 
 
 class LIQUID_PT_physics(bpy.types.Panel):
