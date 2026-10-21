@@ -237,8 +237,9 @@ milliseconds (about 25 ms for 200,000 particles on an RTX 4060 Ti):
 
 - **Smooth** (default) closes and smooths the liquid's density field before
   meshing it: resting liquid is flat, splashes stay connected sheets, and slits
-  and pores between particles fill. It joins bodies whose surfaces are within
-  about three particle radii.
+  and pores between particles fill. A particle lying on the surface makes a
+  low swell, not a spike; one clear of it is a droplet. It joins bodies whose
+  surfaces are within about three particle radii.
 - **Detailed** meshes the raw density field: it keeps every particle-scale
   bump and ripple, and encloses less volume in broken-up liquid (16-20% less in
   a splashing dam break).
