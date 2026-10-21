@@ -60,8 +60,34 @@ def _sphere(name, collection, location, radius):
     return obj
 
 
+def _tray(name, collection, origin):
+    """The Wave Tank's open tray (one mesh, faces towards the liquid): a flat floor, a beach rising towards -Y,
+    and walls round both. Open at the top, so it is given a Margin and holds liquid from either side."""
+    w, front, back, beach, rise, height = 1.2, -1.4, 2.0, -4.2, 0.45, 0.7
+    low = [(-w, front, 0), (w, front, 0), (w, back, 0), (-w, back, 0), (-w, beach, rise), (w, beach, rise)]
+    points = [Vector(v) for v in low] + [Vector(v) + Vector((0, 0, height)) for v in low]
+    # each face with the direction its front must face (into the tray)
+    faces = [((0, 1, 2, 3), (0, 0, 1)), ((4, 5, 1, 0), (0, 0, 1)),                 # floor, beach
+             ((0, 3, 9, 6), (1, 0, 0)), ((4, 0, 6, 10), (1, 0, 0)),                # left wall
+             ((1, 2, 8, 7), (-1, 0, 0)), ((5, 1, 7, 11), (-1, 0, 0)),              # right wall
+             ((2, 3, 9, 8), (0, -1, 0)), ((4, 5, 11, 10), (0, 1, 0))]              # back wall, wall behind the beach
+    polygons = []
+    for indices, inward in faces:
+        a, b, c = (points[i] for i in indices[:3])
+        if (b - a).cross(c - a).dot(Vector(inward)) < 0:
+            indices = tuple(reversed(indices))
+        polygons.append(indices)
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata([tuple(v) for v in points], [], polygons)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    collection.objects.link(obj)
+    obj.location = origin
+    return obj
+
+
 # Presets that run in real time with a surface shown.
-REALTIME = {"SPLASH", "REALTIME_DAM_BREAK", "REALTIME_POUR"}
+REALTIME = {"SPLASH", "REALTIME_DAM_BREAK", "REALTIME_POUR", "WAVE_TANK"}
 # The same scenes at a finer resolution with the Smooth mesh, meant for baking.
 DETAILED = {"DAM_BREAK": "REALTIME_DAM_BREAK", "POUR": "REALTIME_POUR"}
 
@@ -76,6 +102,7 @@ def _realtime(p):
     p.mesh_cell_factor = 1.0
     p.surface_smoothing = 1.0
     p.step_size = 3.0
+    p.collider_step = 1.8
     p.substeps = 1
     # Whitewater shows where it is generated; only the Splash generates it (about 3 ms a frame there).
     p.whitewater = True
@@ -140,8 +167,12 @@ def create(context, preset="DAM_BREAK"):
     p.collider_collection = colliders
     p.effector_collection = effectors
     p.outflow_collection = outflows
-    p.bounds_min = origin + Vector((-2.6, -1.6, -0.4))
-    p.bounds_max = origin + Vector((2.6, 1.6, 3.4))
+    if preset == "WAVE_TANK":
+        p.bounds_min = origin + Vector((-1.6, -4.6, -0.4))
+        p.bounds_max = origin + Vector((1.6, 2.4, 1.6))
+    else:
+        p.bounds_min = origin + Vector((-2.6, -1.6, -0.4))
+        p.bounds_max = origin + Vector((2.6, 1.6, 3.4))
     p.bake_start = scene.frame_current
     p.bake_end = scene.frame_current + 119
     p.mesh_cell_size = 0.035
@@ -156,7 +187,7 @@ def create(context, preset="DAM_BREAK"):
         ("Basin Front", (0, -1.2, 1), (4.5, 0.3, 2.3)),
         ("Basin Back", (0, 1.2, 1), (4.5, 0.3, 2.3)),
     ]
-    for name, location, size in walls:
+    for name, location, size in (walls if preset != "WAVE_TANK" else ()):
         obj = _box(name, colliders, origin + Vector(location), size)
         obj.fumaris_liquid.role = "COLLIDER"
         obj.display_type = "WIRE"
@@ -184,6 +215,28 @@ def create(context, preset="DAM_BREAK"):
                         for key in curve.keyframe_points:
                             key.interpolation = "LINEAR"
         ball.location = origin + Vector((0, 0, 2.0))
+    elif preset == "WAVE_TANK":
+        # A paddle swept back and forth at the deep end sends waves up the beach.
+        p.whitewater_generate = True
+        tray = _tray("Wave Tank", colliders, origin)
+        tray.fumaris_liquid.role = "COLLIDER"
+        tray.fumaris_liquid.collider_margin = 0.05
+        tray.display_type = "WIRE"
+        emitter = _box("Initial Pool", emitters, origin + Vector((0, -0.05, 0.15)), (2.4, 2.9, 0.3))
+        emitter.fumaris_liquid.emission_mode = "INITIAL"
+        # Wall to wall and down on the tray floor's margin, so the water stays in front of it.
+        paddle = _box("Wave Paddle", colliders, origin + Vector((0, 1.75, 0.45)), (2.38, 0.12, 0.8))
+        paddle.fumaris_liquid.role = "COLLIDER"
+        start = scene.frame_current
+        for frame, y in ((start, 1.75), (start + 14, 1.45), (start + 28, 1.75)):
+            paddle.location = origin + Vector((0, y, 0.45))
+            paddle.keyframe_insert("location", index=1, frame=frame)
+        for layer in paddle.animation_data.action.layers:
+            for strip in layer.strips:
+                for bag in strip.channelbags:
+                    for curve in bag.fcurves:
+                        curve.modifiers.new("CYCLES")  # keeps making waves for as long as it plays
+        paddle.location = origin + Vector((0, 1.75, 0.45))
     elif preset == "REALTIME_DAM_BREAK":
         # The block fills the basin's end from wall to wall, as in a dam-break
         # experiment, and runs into two pillars.
@@ -207,7 +260,7 @@ def create(context, preset="DAM_BREAK"):
         emitter.fumaris_liquid.velocity = (0, 0, -2)
         emitter.fumaris_liquid.emission_frequency = 48
     emitter.fumaris_liquid.role = "EMITTER"
-    emitter.fumaris_liquid.source_shape = "BOX" if preset in {"REALTIME_DAM_BREAK", "SPLASH"} else "CYLINDER"
+    emitter.fumaris_liquid.source_shape = "BOX" if preset in {"REALTIME_DAM_BREAK", "SPLASH", "WAVE_TANK"} else "CYLINDER"
     emitter.display_type = "WIRE"
     emitter.hide_render = True
     display.ensure_outputs(scene, domain)

@@ -45,6 +45,7 @@ class LIQUID_OT_setup(bpy.types.Operator):
         ("SPLASH", "Splash (real-time)", "A ball dropped into a pool, sized to play back live with a surface"),
         ("REALTIME_DAM_BREAK", "Dam Break (real-time)", "A wall of water released into pillars, sized to play back live"),
         ("REALTIME_POUR", "Pour (real-time)", "Continuous inflow into a pool, sized to play back live"),
+        ("WAVE_TANK", "Wave Tank (real-time)", "A paddle makes waves that run up a beach; an open tray collider with a Margin"),
         ("DAM_BREAK", "Dam Break (detailed)", "The dam break with about three times the particles; press Final before baking"),
         ("POUR", "Pour (detailed)", "The pour with about three times the particles; press Final before baking"),
     ], default="SPLASH")
@@ -337,17 +338,16 @@ QUALITY_LEVELS = {
     # cell: about twice the solve time, and wall run-up and settled volume no
     # longer depend on Substeps (3% against 33% between 1 and 6 substeps).
     "DRAFT": {"mesh_quality": "GPU_SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.5, "step_size": 3.0},
-    "FINAL": {"mesh_quality": "SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0, "step_size": 1.0},
+    "FINAL": {"mesh_quality": "GPU_SMOOTH", "mesh_cell_relative": True, "mesh_cell_factor": 1.0, "step_size": 1.0},
 }
 
 
 class LIQUID_OT_quality(bpy.types.Operator):
     bl_idname = "fumaris_liquid.quality"
     bl_label = "Set Liquid Quality"
-    bl_description = ("Switch several settings between fast previewing and final quality at once. Draft: Smooth "
-                      "mesh on the graphics card with coarser surface detail, and large solver steps. Final: the Final "
-                      "mesh at full surface detail and small, accurate solver steps (about twice the time). Each setting "
-                      "can still be changed afterwards")
+    bl_description = ("Switch several settings between fast previewing and final quality at once. Draft: coarser "
+                      "surface detail and large solver steps. Final: full surface detail and small, accurate solver steps "
+                      "(about twice the time). Each setting can still be changed afterwards")
     bl_options = {"REGISTER", "UNDO"}
     level: bpy.props.EnumProperty(items=[("DRAFT", "Draft", "Fast settings for previewing and iterating"),
                                          ("FINAL", "Final", "Accurate settings for the final bake and render")])

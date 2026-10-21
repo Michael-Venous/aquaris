@@ -85,12 +85,13 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                          "cells: 3 takes about half the steps of 1 and is the fast preview; 1 is the accurate "
                                          "setting for final results (splashes run up walls and settle as they should). The Draft and "
                                          "Final buttons set 3 and 1. Can be changed while playing")
-    collider_step: FloatProperty(name="Collider Step", default=0.9, min=0.25, max=3.0, precision=2,
+    collider_step: FloatProperty(name="Collider Step", default=1.8, min=0.25, max=3.0, precision=2,
                                  description="Speed against accuracy for moving colliders. How far a collider near the liquid may "
-                                             "move in one solver step, in grid cells: fast colliders force extra steps. 0.9 keeps "
-                                             "impacts clean (a ball dropped into water throws up an intact crown and nothing is "
-                                             "pushed through the floor); up to 2.7 is about twice as fast while a collider moves "
-                                             "but its splash breaks up more. Can be changed while playing")
+                                             "move in one solver step, in grid cells: fast colliders force extra steps. 1.8 suits "
+                                             "most scenes; lower it to 0.9 for the cleanest impacts (a ball dropped into water "
+                                             "throwing up an intact crown), or when a fast collider presses liquid through a "
+                                             "thin floor. Higher values are faster but coarser where colliders strike liquid. "
+                                             "Can be changed while playing")
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005, max=2, subtype="DISTANCE",
                                    description="The simulation's resolution: the size of one liquid particle. Halving it shows finer "
                                                "detail but takes about eight times the particles and much longer. Takes effect when "
@@ -163,18 +164,15 @@ class LiquidProperties(bpy.types.PropertyGroup):
     # saved by 0.2.13 or 0.2.14 used the order GPU, Fast, Final, Smooth.
     mesh_quality: EnumProperty(name="Mesh Quality", update=_surface_update, items=[
         ("GPU_SMOOTH", "Smooth", "Clean, smooth liquid made on the graphics card in milliseconds: flat at rest, connected sheets in "
-                                 "splashes. The default for previews and most renders", 4),
+                                 "splashes. Right for previews and final renders", 4),
         ("GPU", "Detailed", "Made on the graphics card in milliseconds, keeping every particle-sized bump and ripple: looks "
                             "busier and more textured than Smooth", 3),
-        ("SMOOTH", "Final", "The Smooth look made on the processor for final renders: exact-size droplets (see Droplet Size), "
-                            "volume-preserving smoothing and finer sampling when Surface Cell is above 1. Several times slower; "
-                            "the live preview still uses Smooth", 2),
     ], default="GPU_SMOOTH")
     droplet_scale: FloatProperty(update=_surface_update, name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
                                  description="Size of small flying droplets in the surface mesh (Final quality only). 1 keeps their "
                                              "real volume; smaller values draw splashes as finer spray")
-    surface_smoothing: FloatProperty(update=_surface_update, name="Surface Smoothing", default=0.4, min=0, max=1, subtype="FACTOR",
-                                     description="Extra smoothing of the liquid surface: higher removes small dimples and lumps but "
+    surface_smoothing: FloatProperty(update=_surface_update, name="Surface Smoothing", default=1.0, min=0, max=1, subtype="FACTOR",
+                                     description="Smoothing of the liquid surface: higher removes small dimples and lumps but "
                                                  "softens fine detail and takes a little longer")
     surface_velocity: BoolProperty(update=_surface_update, name="Motion Blur Data", default=True,
                                    description="Save how fast each point of the surface moves in baked and recorded frames, so the "
@@ -291,9 +289,9 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                 description="Reach of the field around the object: full strength to three quarters of it, fading out by the radius")
 
 
-# Stored enum numbers of settings that no longer exist, and what they become: mesh_quality FAST (0) and FINAL (1)
-# (the CPU meshers without the closed, smoothed field) and preview_rate FPS_24 (1, 0.3.17).
-_LEGACY = {"mesh_quality": {0: "GPU", 1: "SMOOTH"}, "preview_rate": {1: "SCENE"}}
+# Stored enum numbers of settings that no longer exist, and what they become: mesh_quality FAST (0), FINAL (1) and
+# SMOOTH (2) (the processor's meshers, which looked like the graphics card's) and preview_rate FPS_24 (1, 0.3.17).
+_LEGACY = {"mesh_quality": {0: "GPU", 1: "GPU_SMOOTH", 2: "GPU_SMOOTH"}, "preview_rate": {1: "SCENE"}}
 
 
 @bpy.app.handlers.persistent

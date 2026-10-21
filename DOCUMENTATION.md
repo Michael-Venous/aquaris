@@ -203,15 +203,13 @@ how the liquid settles then depend on Substeps (by about a third between 1 and
 heights up the far wall, as measured ones do, for about twice the time per
 frame. **Draft** sets 3 and **Final** sets 1.
 
-**Collider Step** (Simulation, default 0.9) is how far a moving collider near
+**Collider Step** (Simulation, default 1.8) is how far a moving collider near
 the liquid may travel in one solver step, in grid cells, never more than Step
 Size. A fast collider sets the number of steps: a ball falling into a pool takes
-about five steps a frame at 0.9. Raising it takes fewer steps (two to three a
-frame from 1.5 up, the impact frames about twice as fast) but the liquid the
-collider strikes breaks up more (the measured splash crown of the Splash setup
-falls apart into three times as many pieces), and at the highest values a
-collider pressing liquid against a floor can push some through it. Keep 0.9 for
-impacts that matter; raise it for quick previews of fast-moving colliders.
+about three steps a frame at 1.8 and five at 0.9. Lower it to 0.9 for the
+cleanest impacts: at 1.5 and above the crown a ball throws up breaks into more
+pieces (three times as many in the Splash setup). From 2.0 up, a collider
+pressing liquid against a thin floor can push some through it.
 
 The liquid keeps its volume: each step the particles are moved, without
 changing their velocity, so that their density returns to what it was when
@@ -236,28 +234,25 @@ preview settings (Smooth mesh, GPU Surface display, Step Size 3, Substeps 1).
 
 ## Mesh Quality
 
-There are three surface qualities:
+There are two surface qualities, both built on the graphics card in
+milliseconds (about 25 ms for 200,000 particles on an RTX 4060 Ti):
 
-- **Smooth** (default) builds the surface on the graphics card in
-  milliseconds (about 25 ms for 200,000 particles on an RTX 4060 Ti). It closes
-  and smooths the liquid's density field before meshing it: resting liquid is
-  flat, splashes stay connected sheets, and slits and pores between particles
-  fill. It joins bodies whose surfaces are within about three particle radii.
-- **Detailed** is also built on the graphics card, from the raw density field:
-  it keeps every particle-scale bump and ripple, and encloses less volume in
-  broken-up liquid (16-20% less in a splashing dam break).
-- **Final** builds the Smooth look on the processor, several times slower. It
-  is not the same computation: droplets are spheres of their exact volume (and
-  follow **Droplet Size**), the smoothing keeps each body's volume, and with a
-  Surface Cell above one radius the field is still sampled at one radius. The
-  two graphics-card qualities draw droplets as simple shapes and ignore Droplet
-  Size; a frame too large for them is meshed on the processor instead, with a
-  warning.
+- **Smooth** (default) closes and smooths the liquid's density field before
+  meshing it: resting liquid is flat, splashes stay connected sheets, and slits
+  and pores between particles fill. It joins bodies whose surfaces are within
+  about three particle radii.
+- **Detailed** meshes the raw density field: it keeps every particle-scale
+  bump and ripple, and encloses less volume in broken-up liquid (16-20% less in
+  a splashing dam break).
+
+A frame too large for the graphics card is meshed on the processor instead,
+with a warning. (Earlier versions also had processor-built qualities; files
+that used them open with Smooth, or Detailed for the old Fast.)
 
 The live GPU Surface preview always uses Smooth; the chosen quality applies to
 the Surface display, recordings and bakes.
 
-The surface settings (cell, Mesh Quality, Droplet Size, Surface Smoothing,
+The surface settings (cell, Mesh Quality, Surface Smoothing,
 motion vectors) can be changed during a run. They apply from the next frame;
 while paused, the frame the solver is holding is meshed again at once with
 the new settings, without advancing the simulation. They are fixed during a
@@ -382,17 +377,11 @@ origins, and inherited instance velocity. No Python OpenVDB library is required.
 
 ## Splash detail and motion blur
 
-**Droplet Size** (Surface and Display) scales detached droplets of roughly one
-to three particles in the surface mesh. At 1 each keeps its particle's volume,
-which makes fine splashes look like beads; lower values (0.3–0.5) draw them as
-finer spray. New domains start at 0.5. The simulation is unaffected, and connected liquid is never scaled.
-
 **Surface Smoothing** filters the finished surface mesh to remove the
-particle-scale dimples that make calm liquid look hammered. Each
-connected body's volume is restored afterwards and vertices move at most about
-one and a half particle radii at full strength, so thin sheets soften rather than
-disappear. New domains start at 0.4 and the Quick Setups at 1.0; 0 gives the
-unfiltered reconstruction.
+particle-scale dimples that make calm liquid look hammered. Vertices move at
+most about a particle radius at full strength, and not where the liquid behind
+them is thin, so thin sheets keep their shape. New domains and the Quick Setups start at 1.0; 0 gives the unfiltered
+reconstruction.
 
 **Motion Blur Data** stores a velocity for every surface vertex of baked and
 recorded frames (it has no visible effect in the viewport),
