@@ -92,6 +92,35 @@ def _detailed(p):
     p.step_size = 1.0
 
 
+def _collapse_outliners():
+    """Collapse every collection in the View Layer outliners, leaving the Scene Collection open.
+
+    Blender opens a new collection the first time an outliner draws it, and its outliner has no API for one
+    element: everything is opened (an object's contents start closed, so the first toggle opens), closed, and
+    the top level opened again. Runs from a timer, after the outliners have drawn the new collections."""
+    try:
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type != "OUTLINER" or area.spaces.active.display_mode != "VIEW_LAYER":
+                    continue
+                region = next((r for r in area.regions if r.type == "WINDOW"), None)
+                if region is None:
+                    continue
+                with bpy.context.temp_override(window=window, area=area, region=region):
+                    bpy.ops.outliner.expanded_toggle()
+                    bpy.ops.outliner.expanded_toggle()
+                    bpy.ops.outliner.show_one_level(open=True)
+                area.tag_redraw()
+    except (ReferenceError, RuntimeError):
+        pass  # a closed window or an outliner in another state: cosmetic only
+    return None
+
+
+def collapse_outliners_soon():
+    if not bpy.app.background:
+        bpy.app.timers.register(_collapse_outliners, first_interval=0.1)
+
+
 def create(context, preset="DAM_BREAK"):
     if preset not in REALTIME and preset not in DETAILED:
         raise ValueError(f"Unknown Aquaris setup: {preset}")

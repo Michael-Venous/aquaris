@@ -62,7 +62,7 @@ Particle radius sets the liquid sampling spacing (twice the radius). Smaller
 values produce more particles and more work. Surface cell size controls output
 mesh detail independently. Radius, particle budgets, region and mesh sizing
 should be chosen before starting; their UI is disabled while running. Gravity,
-Substeps, Step Size, Simulation Speed and FLIP Ratio can be adjusted while playing.
+Substeps, Step Size, Collider Step, Simulation Speed and FLIP Ratio can be adjusted while playing.
 **Substeps** is the fewest steps the solver takes per frame; it adds more by
 itself when the liquid or a collider moves fast, so 1 is enough for most
 scenes. Gravity is entered in metres per second squared and is
@@ -155,6 +155,15 @@ whose cell is two and a half particle radii, so this is not an exact triangle
 collision representation. Thin sheets, sharp edges and rapidly moving geometry
 need careful testing at the chosen radius.
 
+A collider's **Margin** (Collider panel, default 0) adds thickness to its
+surface. A closed mesh grows outward by the margin. An open mesh, such as a
+plane or a sheet with open edges, becomes a slab the margin thick on each
+side, so it holds liquid from both sides and the liquid rests the margin away
+from it whichever way its faces point (without a margin, liquid on the back of
+a plane rests about a grid cell and a half above it). A slab thinner than about
+one grid cell is widened to one cell by the solver. An open mesh with a margin
+sends twice the samples.
+
 **Effectors (force fields) are not available in this version.** The Effector
 role and the domain's effector collection remain so that scenes from earlier
 versions load; a simulation with an enabled effector in that collection does
@@ -193,6 +202,16 @@ how the liquid settles then depend on Substeps (by about a third between 1 and
 6 substeps). At 1 they no longer do (3%), and a dam break runs 2.1 column
 heights up the far wall, as measured ones do, for about twice the time per
 frame. **Draft** sets 3 and **Final** sets 1.
+
+**Collider Step** (Simulation, default 0.9) is how far a moving collider near
+the liquid may travel in one solver step, in grid cells, never more than Step
+Size. A fast collider sets the number of steps: a ball falling into a pool takes
+about five steps a frame at 0.9. Raising it takes fewer steps (two to three a
+frame from 1.5 up, the impact frames about twice as fast) but the liquid the
+collider strikes breaks up more (the measured splash crown of the Splash setup
+falls apart into three times as many pieces), and at the highest values a
+collider pressing liquid against a floor can push some through it. Keep 0.9 for
+impacts that matter; raise it for quick previews of fast-moving colliders.
 
 The liquid keeps its volume: each step the particles are moved, without
 changing their velocity, so that their density returns to what it was when

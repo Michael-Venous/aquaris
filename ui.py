@@ -69,6 +69,7 @@ def _participant(layout, context):
     elif p.role == "OUTFLOW":
         box.label(text="Removes particles inside the world bounding box")
     elif p.role == "COLLIDER":
+        box.prop(p, "collider_margin")
         box.label(text="Evaluated mesh surface; animation supported")
 
 
@@ -168,7 +169,7 @@ def _draw(layout, context):
             structural = box.column()
             structural.enabled = running is None
             structural.prop(p, "particle_radius")
-            for name in ("substeps", "step_size", "speed", "gravity", "flip_ratio"):
+            for name in ("substeps", "step_size", "collider_step", "speed", "gravity", "flip_ratio"):
                 box.prop(p, name)
             box.prop(p, "viscosity_preset")
             row = box.row()

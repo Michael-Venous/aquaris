@@ -65,6 +65,7 @@ class LIQUID_OT_setup(bpy.types.Operator):
             return {"CANCELLED"}
         domain = quick_setup.create(context, self.preset)
         context.scene.fumaris_liquid_domain = domain
+        quick_setup.collapse_outliners_soon()
         return {"FINISHED"}
 
 

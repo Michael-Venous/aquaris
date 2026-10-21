@@ -422,7 +422,10 @@ def ensure_outputs(scene, domain):
     collection = p.output_collection
     if collection is None or collection.get("fumaris_liquid_owner") != identity:
         collection = bpy.data.collections.new(domain.name + " Output")
-        scene.collection.children.link(collection)
+        # inside the domain's own collection (a Quick Setup's "Aquaris ..."), not beside it
+        home = next((c for c in domain.users_collection
+                     if c == scene.collection or c in scene.collection.children_recursive), scene.collection)
+        home.children.link(collection)
         collection["fumaris_liquid_owner"] = identity
         collection["fumaris_liquid_domain"] = domain
         p.output_collection = collection

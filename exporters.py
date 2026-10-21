@@ -70,6 +70,7 @@ def settings(scene, domain):
     scale = max(1e-8, scene.unit_settings.scale_length)
     return {
         "cfl": p.step_size,
+        "collider_step": p.collider_step,
         "flip_blend": p.flip_ratio,
         # m²/s into the scene's own length unit, as gravity is
         "viscosity": p.viscosity / scale ** 2,
@@ -195,6 +196,9 @@ class SceneExporter:
         self.boundary_cache = {}
         # Outward face normal of every collider sample, in the order _boundary returned them.
         self.boundary_normals = {}
+        self.margin_cache = {}  # per collider key: (positions, velocities, margin, result, velocities) (_with_margin)
+        self.margin_normals = {}
+        self.open_meshes = {}  # per collider key: (triangles, whether an edge is used by one triangle)
         # Per collider: where each surface sample sits on its triangle, reused while the mesh keeps its shape.
         self.boundary_lattice = {}
         self.initialized = set()
@@ -561,6 +565,49 @@ class SceneExporter:
             velocities += motion * props.inherited_motion
         return velocities
 
+    def _with_margin(self, key, props, triangles, positions, velocities):
+        """A collider's samples with its Margin applied, and their normals (self.margin_normals[key]).
+
+        A closed mesh's samples move out along their normals; an open mesh (an edge used by one triangle: a
+        plane) gets samples on both sides, facing away from it, so it is a slab twice the margin thick that holds
+        liquid from either side. The same arrays are returned while nothing changes, as _boundary does, so an
+        unmoved collider is not sent again."""
+        margin = float(props.collider_margin) if props is not None else 0.0
+        if margin <= 0.0:
+            self.margin_cache.pop(key, None)
+            self.margin_normals.pop(key, None)
+            return positions, velocities
+        normals = self.boundary_normals.get(key)
+        if normals is None or len(normals) != len(positions):
+            return positions, velocities
+        cached = self.margin_cache.get(key)
+        if cached is not None and cached[0] is positions and cached[1] is velocities and cached[2] == margin:
+            return cached[3], cached[4]
+        open_mesh = self._open_mesh(key, triangles)
+        faced = np.einsum('ij,ij->i', normals, normals) > 0.25  # samples without a face behind them are a shell
+        if open_mesh:
+            front, back = positions + normals * margin, positions - normals * margin
+            result = np.concatenate((front, back[faced]))
+            moved = np.concatenate((velocities, velocities[faced]))
+            facing = np.concatenate((normals, -normals[faced]))
+        else:
+            result, moved, facing = positions + normals * margin, velocities, normals
+        self.margin_cache[key] = (positions, velocities, margin, result, moved)
+        self.margin_normals[key] = facing
+        return result, moved
+
+    def _open_mesh(self, key, triangles):
+        """Whether a triangle mesh has an open edge (one used by a single triangle), cached per topology."""
+        cached = self.open_meshes.get(key)
+        if cached is not None and np.array_equal(cached[0], triangles):
+            return cached[1]
+        tri = np.asarray(triangles, dtype=np.int64).reshape(-1, 3)
+        edges = np.sort(np.concatenate((tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]])), axis=1)
+        _, counts = np.unique(edges, axis=0, return_counts=True)
+        result = bool(len(counts)) and bool((counts == 1).any())
+        self.open_meshes[key] = (np.array(triangles, copy=True), result)
+        return result
+
     def _boundary(self, obj, props, geometry, spacing, history_key=None):
         world, triangles, matrix, mask, attr_velocity = geometry
         history_key = history_key if history_key is not None else obj.as_pointer()
@@ -847,6 +894,7 @@ class SceneExporter:
                             self.source_volume_active.add((key, props.source_shape))
                         if props.role == "COLLIDER":
                             positions, velocities = self._boundary(source, props, geometry, p.particle_radius, key)
+                            positions, velocities = self._with_margin(key, props, geometry[1], positions, velocities)
                         elif repetitions:
                             if props.emission_mode == "CONTINUOUS":
                                 self._record_source_phase(key, props, geometry, dt)
@@ -865,7 +913,7 @@ class SceneExporter:
                         boundary.append(positions)
                         boundary_velocity.append(velocities)
                         # The side liquid may not enter. Samples without a mesh face behind them send none.
-                        facing = self.boundary_normals.get(key)
+                        facing = self.margin_normals.get(key, self.boundary_normals.get(key))
                         boundary_normal.append(facing if facing is not None and len(facing) == len(positions)
                                                else np.zeros_like(positions))
                     elif repetitions:

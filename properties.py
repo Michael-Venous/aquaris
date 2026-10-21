@@ -43,6 +43,11 @@ class LiquidProperties(bpy.types.PropertyGroup):
     ], default="NONE")
     enabled: BoolProperty(name="Enabled", default=True,
                           description="Animate to enable or disable this participant")
+    collider_margin: FloatProperty(name="Margin", default=0.0, min=0.0, soft_max=0.5, subtype="DISTANCE", unit="LENGTH",
+                                   description="Thickness added to this collider's surface. A closed mesh grows outward by "
+                                               "this much; an open mesh (a plane, a sheet) becomes a slab this thick on each "
+                                               "side, so liquid is held from both sides instead of only in front of its "
+                                               "faces. Thinner than about a grid cell, the solver widens it to one cell")
     domain_id: StringProperty(name="Cache Identity", options={"HIDDEN"})
     emitter_collection: PointerProperty(name="Emitters", type=bpy.types.Collection)
     collider_collection: PointerProperty(name="Colliders", type=bpy.types.Collection)
@@ -77,6 +82,12 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                          "preview: about half the steps, but the height a splash reaches on a wall and how the "
                                          "liquid settles then depend on Substeps. At 1 they no longer do, for about twice the "
                                          "time per frame. Draft sets 3, Final sets 1. Can be changed while running")
+    collider_step: FloatProperty(name="Collider Step", default=0.9, min=0.25, max=3.0, precision=2,
+                                 description="How far a moving collider near the liquid may travel in one solver step, in grid "
+                                             "cells (never more than Step Size). A fast collider sets the steps per frame: at 0.9 "
+                                             "a ball dropped into a pool keeps a clean crown and the floor holds. Higher values "
+                                             "take fewer steps (about 2x faster at 2.7) but the liquid it strikes breaks up more and, "
+                                             "at the highest, can be pushed through thin floors. Can be changed while running")
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005,
                                   max=2, subtype="DISTANCE",
                                   description="World-space sampling and solver radius; restart to change")
