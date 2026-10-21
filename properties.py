@@ -205,6 +205,8 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("PARTICLES", "Particles", "Show the simulation's particles instead of a surface, to see what the solver is doing"),
     ], default="PREVIEW", update=_display_update)
     status: StringProperty(name="Status", default="Ready", options={"SKIP_SAVE"})
+    progress: StringProperty(name="Progress", options={"SKIP_SAVE"})  # a running bake's frame, time so far and left
+    bake_summary: StringProperty(name="Last Bake")  # how the last bake of this domain went (kept with the file)
     last_error: StringProperty(name="Error", options={"SKIP_SAVE"})
     runtime_info: StringProperty(name="Runtime", options={"SKIP_SAVE"})
     runtime_warning: StringProperty(name="Runtime Warning", options={"SKIP_SAVE"})

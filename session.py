@@ -25,6 +25,20 @@ def active():
     return _active
 
 
+def _clock(seconds):
+    seconds = int(round(seconds))
+    return f"{seconds // 3600}h {seconds // 60 % 60:02d}m" if seconds >= 3600 else f"{seconds // 60}m {seconds % 60:02d}s"
+
+
+def _progress(step, *args):
+    """Blender's progress readout for a bake (the window manager's; none in a test without one)."""
+    try:
+        manager = bpy.context.window_manager
+        getattr(manager, "progress_" + step)(*args)
+    except Exception:
+        pass
+
+
 def cache_for(domain):
     p = domain.fumaris_liquid
     identity = display.ensure_identity(domain)
@@ -57,6 +71,7 @@ class Session:
         self._cleanup_retry_at = 0
         self._last_cleanup_report = None
         self.frame = domain.fumaris_liquid.bake_start if bake else scene.frame_current
+        self.first_frame = self.frame
         self.last_frame = domain.fumaris_liquid.bake_end if bake else None
         if bake and self.last_frame < self.frame:
             raise RuntimeError("Bake end must be at least the start frame")
@@ -75,6 +90,8 @@ class Session:
 
     def begin(self):
         if self.cache:
+            if self.cache.protected():
+                raise RuntimeError(f"Cache slot '{self.cache.slot}' is protected; unlock it or use a new slot")
             self.cache.acquire()
             # Check while holding the slot lock, through the retained owner.
             if self.cache.frames():
@@ -82,7 +99,35 @@ class Session:
         self.domain.fumaris_liquid.last_error = ""
         self.domain.fumaris_liquid.runtime_warning = ""
         self.domain.fumaris_liquid.status = "Starting Vulkan liquid solver…"
+        self._started = time.monotonic()
+        if self.bake:
+            self.domain.fumaris_liquid.bake_summary = ""
+            _progress("begin", 0, self.last_frame - self.first_frame + 1)
         self._submit(self.bridge.start, self.last_settings, work=True)
+
+    def _frame_shown(self, frame):
+        """A bake's progress after each frame it has cached: the status panel's line and Blender's progress readout."""
+        if not self.bake:
+            return
+        total = self.last_frame - self.first_frame + 1
+        done = max(1, min(total, frame - self.first_frame + 1))
+        elapsed = time.monotonic() - self._started
+        left = elapsed / done * (total - done)
+        self.domain.fumaris_liquid.progress = (f"Baking frame {frame} ({done} of {total}) · {_clock(elapsed)} so far"
+                                               + (f" · about {_clock(left)} left" if done < total else ""))
+        self._baked = done
+        _progress("update", done)
+
+    def _finish_bake(self, complete):
+        if not self.bake:
+            return
+        _progress("end")
+        p = self.domain.fumaris_liquid
+        p.progress = ""
+        elapsed = _clock(time.monotonic() - getattr(self, "_started", time.monotonic()))
+        done = getattr(self, "_baked", 0)
+        p.bake_summary = (f"Baked {done} frames in {elapsed}" if complete else
+                          f"Bake stopped after {done} frames ({elapsed})" if done else "")
 
     def _submit(self, function, *args, work=False):
         # Retire terminal receipts while preserving every running/pending task.
@@ -213,6 +258,7 @@ class Session:
                     self.last_response = result[0]
                     display.apply(self.scene, self.domain, *result)
                     shown = result[0]["frame"]
+                    self._frame_shown(shown)
                     if self.bake and shown >= self.last_frame:
                         self.stopping = True
                 elif self.phase == "SNAPSHOT":
@@ -229,6 +275,7 @@ class Session:
                         self.domain.fumaris_liquid.status = "Bake complete"
                     else:
                         self.domain.fumaris_liquid.status = "Stopped"
+                    self._finish_bake(self.domain.fumaris_liquid.status == "Bake complete")
                     return False
             except Exception as exc:
                 first_error = self.error is None and (not self.stopping or self.phase == "CLOSING")
@@ -433,6 +480,7 @@ class Session:
                             self.domain.fumaris_liquid.last_error = self.error
                             self.request_stop()
                     display.apply(self.scene, self.domain, *result)
+                    self._frame_shown(result[0].get("frame", self.frame - 1))
                     if requested:
                         return True
                 elif self.phase == "SNAPSHOT":
@@ -447,6 +495,7 @@ class Session:
                         self.domain.fumaris_liquid.status = "Bake complete"
                     else:
                         self.domain.fumaris_liquid.status = "Stopped"
+                    self._finish_bake(self.domain.fumaris_liquid.status == "Bake complete")
                     return False
             except Exception as exc:
                 first_error = self.error is None and (not self.stopping or self.phase == "CLOSING")

@@ -42,7 +42,10 @@ def _control(context, domain, action):
 class LIQUID_OT_playback_toggle(bpy.types.Operator):
     bl_idname = "fumaris_liquid.playback_toggle"
     bl_label = "Aquaris Play / Pause"
-    bl_description = "Play the liquid live, pause it, or resume it, without changing the selection"
+
+    @classmethod
+    def description(cls, context, properties):
+        return f"Play the liquid live, pause it, or resume it, without changing the selection ({shortcut(cls.bl_idname)})"
 
     @classmethod
     def poll(cls, context):
@@ -101,7 +104,31 @@ class LIQUID_PT_playback(bpy.types.Panel):
         layout.label(text=("Domain: " + domain.name) if domain else "Choose a domain", icon="MOD_FLUIDSIM")
         if domain is not None and domain.fumaris_liquid.status:
             layout.label(text=domain.fumaris_liquid.status)
-        layout.label(text="Shift+Alt+L play / pause, Shift+Alt+K stop", icon="EVENT_L")
+        layout.label(text=f"{shortcut('fumaris_liquid.playback_toggle')} play / pause, {shortcut('fumaris_liquid.playback_stop')} stop",
+                     icon="KEYINGSET")
+        layout.label(text="Change them in the add-on's preferences")
+
+
+def shortcut(operator):
+    """The key the user has for an operator now (Window keymap, user configuration), as Blender writes it."""
+    try:
+        config = bpy.context.window_manager.keyconfigs.user
+        keymap = config.keymaps.get("Window") if config else None
+        for item in (keymap.keymap_items if keymap else ()):
+            if item.idname == operator and item.active:
+                keys = [name for flag, name in ((item.ctrl, "Ctrl"), (item.shift, "Shift"), (item.alt, "Alt"), (item.oskey, "Cmd")) if flag]
+                return "+".join(keys + [item.type.title()])
+    except Exception:
+        pass
+    return "no key"
+
+
+@bpy.app.handlers.persistent
+def _native_playback(scene, *_):
+    """Blender's own timeline playback takes the scene's frames: a live preview, which sets them too, stops (a bake runs on)."""
+    running = session.active()
+    if running is not None and not running.bake and running.scene == scene:
+        running.request_stop()
 
 
 def draw_header(self, context):
@@ -146,6 +173,7 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_HT_header.append(draw_header)
     bpy.types.DOPESHEET_HT_header.append(draw_header)
+    bpy.app.handlers.animation_playback_pre.append(_native_playback)
     config = bpy.context.window_manager.keyconfigs.addon
     if config:
         keymap = config.keymaps.new(name="Window", space_type="EMPTY")
@@ -154,6 +182,8 @@ def register():
 
 
 def unregister():
+    if _native_playback in bpy.app.handlers.animation_playback_pre:
+        bpy.app.handlers.animation_playback_pre.remove(_native_playback)
     for keymap, item in _KEYMAPS:
         keymap.keymap_items.remove(item)
     _KEYMAPS.clear()

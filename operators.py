@@ -5,7 +5,7 @@ import json
 import platform
 from bpy.props import EnumProperty
 
-from . import display, quick_setup, session
+from . import cache as cache_module, display, quick_setup, session
 
 
 def domain_for(context):
@@ -66,6 +66,8 @@ class LIQUID_OT_setup(bpy.types.Operator):
             return {"CANCELLED"}
         domain = quick_setup.create(context, self.preset)
         context.scene.fumaris_liquid_domain = domain
+        if hasattr(context.scene, "fumaris_liquid_playback_domain"):
+            context.scene.fumaris_liquid_playback_domain = domain  # what the header's play / stop and shortcuts control
         quick_setup.collapse_outliners_soon()
         return {"FINISHED"}
 
@@ -75,10 +77,40 @@ class LIQUID_OT_control(bpy.types.Operator):
     bl_label = "Liquid Simulation"
     action: EnumProperty(items=[(value, value.title(), "") for value in
                                 ("PLAY", "PAUSE", "RESUME", "STOP", "BAKE", "CANCEL", "RESET")])
+    replace: bpy.props.BoolProperty(options={"SKIP_SAVE", "HIDDEN"},
+                                    description="Delete the frames already in the cache slot before writing new ones")
+
+    @classmethod
+    def description(cls, context, properties):
+        return {"PLAY": "Play the simulation live in the viewport", "PAUSE": "Pause the live simulation, keeping its state",
+                "RESUME": "Continue the paused simulation", "STOP": "Stop the simulation",
+                "BAKE": "Simulate the frame range and save every frame to the cache slot, for playback and rendering",
+                "CANCEL": "Stop the bake; the frames baked so far stay in the cache",
+                "RESET": "Clear the liquid shown and return to the start"}.get(properties.action, "")
 
     @classmethod
     def poll(cls, context):
         return domain_for(context) is not None
+
+    def invoke(self, context, event):
+        domain = domain_for(context)
+        p = domain.fumaris_liquid if domain is not None else None
+        if p is not None and session.active() is None and (self.action == "BAKE" or (self.action == "PLAY" and p.record_preview)):
+            try:
+                cache = session.cache_for(domain)
+                frames = cache.frames()
+            except Exception:
+                frames = []
+            if frames and cache.protected():
+                self.report({"ERROR"}, f"Cache slot '{p.cache_slot}' is protected; unlock it or press + for a new slot")
+                return {"CANCELLED"}
+            if frames:
+                self.replace = True
+                return context.window_manager.invoke_confirm(
+                    self, event, title=f"Replace the bake in slot '{p.cache_slot}'?", confirm_text="Replace", icon="WARNING",
+                    message=f"It holds {len(frames)} frames ({frames[0]}–{frames[-1]}). To keep them, cancel and press + "
+                            "beside Cache Slot to write into a new slot")
+        return self.execute(context)
 
     def execute(self, context):
         domain = domain_for(context)
@@ -89,6 +121,11 @@ class LIQUID_OT_control(bpy.types.Operator):
             if running is not None and running.domain != domain:
                 raise RuntimeError("Another Aquaris domain is running; select its object to control it")
             if self.action in {"PLAY", "BAKE"}:
+                if self.replace and running is None and (self.action == "BAKE" or domain.fumaris_liquid.record_preview):
+                    cache = session.cache_for(domain)
+                    if cache.frames():
+                        cache.delete()
+                        display.clear(domain)
                 session.start(context.scene, domain, self.action == "BAKE")
             elif self.action in {"STOP", "CANCEL"}:
                 if running is not None:
@@ -125,8 +162,18 @@ class LIQUID_OT_cache(bpy.types.Operator):
 
     def invoke(self, context, event):
         if self.action == "DELETE":
-            return context.window_manager.invoke_confirm(self, event, title="Delete Liquid Cache Slot?",
-                message="Remove every recorded frame in this domain's selected cache slot")
+            domain = domain_for(context)
+            try:
+                cache = session.cache_for(domain)
+                frames, protected = cache.frames(), cache.protected()
+            except Exception:
+                frames, protected = [], False
+            if protected:
+                self.report({"ERROR"}, f"Cache slot '{domain.fumaris_liquid.cache_slot}' is protected; unlock it first")
+                return {"CANCELLED"}
+            held = f"It holds {len(frames)} frames ({frames[0]}–{frames[-1]}). " if frames else ""
+            return context.window_manager.invoke_confirm(self, event, title=f"Delete cache slot '{domain.fumaris_liquid.cache_slot}'?",
+                message=held + "They cannot be recovered", confirm_text="Delete", icon="WARNING")
         return self.execute(context)
 
     def execute(self, context):
@@ -143,6 +190,49 @@ class LIQUID_OT_cache(bpy.types.Operator):
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             domain.fumaris_liquid.last_error = str(exc)
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class LIQUID_OT_cache_slot_new(bpy.types.Operator):
+    bl_idname = "fumaris_liquid.cache_slot_new"
+    bl_label = "New Cache Slot"
+    bl_description = ("Switch to the next unused cache slot (main → main_001 → main_002), so the next bake is kept "
+                      "next to the earlier ones instead of replacing them")
+
+    @classmethod
+    def poll(cls, context):
+        return domain_for(context) is not None and session.active() is None
+
+    def execute(self, context):
+        domain = domain_for(context)
+        p = domain.fumaris_liquid
+        try:
+            p.cache_slot = cache_module.next_slot_name(bpy.path.abspath(p.cache_directory), display.ensure_identity(domain), p.cache_slot)
+        except Exception as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        display.clear(domain)
+        p.status = f"Cache slot '{p.cache_slot}' (empty)"
+        return {"FINISHED"}
+
+
+class LIQUID_OT_cache_protect(bpy.types.Operator):
+    bl_idname = "fumaris_liquid.cache_protect"
+    bl_label = "Protect Cache Slot"
+    bl_description = "Lock this cache slot's bake against being deleted or replaced; press again to unlock"
+
+    @classmethod
+    def poll(cls, context):
+        return domain_for(context) is not None and session.active() is None
+
+    def execute(self, context):
+        domain = domain_for(context)
+        try:
+            cache = session.cache_for(domain)
+            cache.set_protected(not cache.protected())
+        except Exception as exc:
+            self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -391,7 +481,7 @@ class LIQUID_OT_diagnostics(bpy.types.Operator):
         return {"FINISHED"}
 
 
-classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_rebuild_surface, LIQUID_OT_export_vdb, LIQUID_OT_export_alembic, LIQUID_OT_quality, LIQUID_OT_diagnostics)
+classes = (LIQUID_OT_setup, LIQUID_OT_control, LIQUID_OT_cache, LIQUID_OT_cache_slot_new, LIQUID_OT_cache_protect, LIQUID_OT_rebuild_surface, LIQUID_OT_export_vdb, LIQUID_OT_export_alembic, LIQUID_OT_quality, LIQUID_OT_diagnostics)
 
 
 def register():

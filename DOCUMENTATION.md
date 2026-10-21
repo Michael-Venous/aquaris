@@ -8,15 +8,14 @@ record shipped with the build.
 
 ## What this version does and does not do
 
-It simulates one inviscid liquid (water) with mesh colliders, initial and
-continuous emitters, outflows and gravity, plays small scenes live, bakes
-larger ones to a cache, and builds a renderable surface with motion vectors.
+It simulates one liquid with mesh colliders, initial and continuous emitters,
+outflows, gravity, viscosity, surface tension, force fields (effectors) and
+whitewater (foam, spray and bubbles). It plays small scenes live, bakes larger
+ones to a cache, and builds a renderable surface with motion vectors.
 
-It does **not** simulate viscosity, surface tension, whitewater (foam, spray,
-bubbles) or force fields (effectors). Versions up to 0.2.18 offered these on a
-second, position-based particle solver. That solver was removed on 2026-10-12
-and the grid solver is the only one; the four features are to return on it,
-in the order whitewater, surface tension, viscosity, forces.
+Versions up to 0.2.18 had a second, position-based particle solver. It was
+removed on 2026-10-12; the grid solver is the only one, and viscosity, surface
+tension, whitewater and force fields have since returned on it.
 
 Scenes and caches from earlier versions still open. A scene that used the
 particle solver now simulates on the grid solver and looks different; its
@@ -164,10 +163,9 @@ a plane rests about a grid cell and a half above it). A slab thinner than about
 one grid cell is widened to one cell by the solver. An open mesh with a margin
 sends twice the samples.
 
-**Effectors (force fields) are not available in this version.** The Effector
-role and the domain's effector collection remain so that scenes from earlier
-versions load; a simulation with an enabled effector in that collection does
-not start and reports it. Disable the effector or empty the collection.
+**Effectors** (force fields) push the liquid around an object: a uniform
+force, wind along the object's Z, a vortex around it, or turbulence. Each
+reaches out to its Radius, at full strength up to three quarters of it.
 
 Outflows remove particles inside their evaluated **world-aligned bounding box**.
 The runtime supports 32 outflows, five of which (six without
@@ -393,6 +391,25 @@ vectors. While a frame renders, its own cached liquid stays in place at the
 shutter's open and close times; the blur comes only from these vectors. Between
 frames (a subframe set by hand, or a scene rendered through another scene's
 compositor) the nearer cached frame is shown.
+
+## The panel
+
+The domain's panel (Properties > Physics, and the Aquaris tab of the 3D view's
+sidebar) starts with the **Simulate** block, which is always open: the status
+(with a bake's progress and time left, and afterwards how the last bake went),
+Play, Bake and Reset, Draft and Final, Particle Radius, the frame range, Record
+Preview and Preview Rate. Below it are Participant Collections, Liquid,
+Whitewater, Surface and Display, Cache and Export, Advanced (region, walls,
+budgets) and Diagnostics (the GPU, the last frame's timings, how full the
+particle budget is, and Copy Diagnostics).
+
+In **Cache and Export**, **+** beside Cache Slot switches to the next unused
+slot (main, main_001, main_002 …) so a new bake is kept beside the earlier
+ones, and the lock **protects** the slot's bake: it is then neither deleted nor
+replaced. Baking into a slot that already holds frames asks first whether to
+replace them.
+
+Blender's own timeline playback stops a live preview (a bake continues).
 
 ## Interactive performance
 

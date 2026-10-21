@@ -14,6 +14,7 @@ from .protocol import read_message, write_message
 
 SCHEMA = 1
 MARKER = "fumaris-liquid-cache.json"
+PROTECT = ".aquaris_protected"  # a slot holding this file is not deleted or written (Protect, in the cache panel)
 _SAFE_SLOT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 LOCK = ".writer.lock"
 
@@ -397,7 +398,23 @@ class Cache:
             if isinstance(stored, dict) and stored.get("domain_id") == self.domain_id and stored.get("schema") == SCHEMA:
                 shutil.rmtree(doomed, ignore_errors=True)
 
+    def protected(self):
+        return (self.path / PROTECT).is_file()
+
+    def set_protected(self, on):
+        """Lock or unlock an owned slot that exists, against deletion and new bakes."""
+        if not self.path.exists():
+            raise RuntimeError("There is no bake in this cache slot to protect")
+        self._verify()
+        target = self.path / PROTECT
+        if on:
+            self._atomic_bytes(target, b"protected\n")
+        elif target.exists():
+            target.unlink()
+
     def delete(self):
+        if self.protected():
+            raise RuntimeError(f"Cache slot '{self.slot}' is protected; unlock it first")
         if self._lock_release_started:
             raise RuntimeError("Cache lock retirement is incomplete; cannot delete cache")
         if self._lock_fd is not None:
@@ -440,3 +457,20 @@ class Cache:
 
     def __exit__(self, *_):
         self.release()
+
+
+def next_slot_name(directory, domain_id, slot):
+    """The next free slot after `slot`: main -> main_001 -> main_002, take_7 -> take_8, skipping slots that hold frames."""
+    match = re.fullmatch(r"(.*?)(?:_(\d+))?", slot)
+    base, number = match.group(1) or "slot", int(match.group(2) or 0)
+    width = len(match.group(2)) if match.group(2) else 3
+    for step in range(1, 10000):
+        name = f"{base}_{number + step:0{width}d}"
+        if len(name) > 64:
+            break
+        try:
+            if not Cache(directory, domain_id, name).frames():
+                return name
+        except (RuntimeError, ValueError):
+            continue
+    raise RuntimeError("No free cache slot name found")

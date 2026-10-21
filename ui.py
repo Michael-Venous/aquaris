@@ -1,12 +1,41 @@
 """Fumaris-style participant collections, transport and bake controls."""
 
-import bpy
+import json
+import os
 import textwrap
 
-from . import operators, session
+import bpy
+
+from . import exporters, operators, session
+
+_ROLE_ICONS = {"EMITTER": "OUTLINER_OB_FORCE_FIELD", "COLLIDER": "MOD_PHYSICS", "EFFECTOR": "FORCE_FORCE",
+               "OUTFLOW": "MOD_FLUID", "DOMAIN": "MOD_FLUIDSIM"}
+_slot_summaries = {}  # slot folder -> (folder's modification time, summary): the panel redraws far more often than a bake writes
 
 
-# The one line the panel shows for what this version does not simulate.
+def _slot_summary(domain):
+    """'N frames (a–b)', 'empty', and whether the slot is protected, for the cache section."""
+    try:
+        cache = session.cache_for(domain)
+        stamp = os.stat(cache.path).st_mtime_ns if cache.path.exists() else 0
+        known = _slot_summaries.get(str(cache.path))
+        if known is not None and known[0] == stamp:
+            return known[1]
+        frames = cache.frames()
+        summary = (f"{len(frames)} frames ({frames[0]}–{frames[-1]})" if frames else "empty", cache.protected())
+    except Exception:
+        summary = ("not readable", False)
+        stamp = None
+    if stamp is not None:
+        _slot_summaries[str(cache.path)] = (stamp, summary)
+    return summary
+
+
+def _wrapped(layout, text, width, icon="NONE", alert=False, lines=6):
+    column = layout.column(align=True)
+    column.alert = alert
+    for index, line in enumerate(textwrap.wrap(text, width=width)[:lines]):
+        column.label(text=line, icon=icon if index == 0 else "BLANK1")
 
 
 def _control(layout, text, action, icon):
@@ -25,7 +54,8 @@ def _participant(layout, context):
     if obj is None or obj.get("fumaris_liquid_output") or obj.fumaris_liquid.role == "DOMAIN":
         return
     p = obj.fumaris_liquid
-    box = _section(layout, "participant", "Participant: " + obj.name)
+    header, box = layout.panel("liquid_participant", default_closed=False)
+    header.label(text=p.bl_rna.properties["role"].enum_items[p.role].name + ": " + obj.name, icon=_ROLE_ICONS.get(p.role, "OBJECT_DATA"))
     if box is None:
         return
     box.prop(p, "enabled")
@@ -75,34 +105,28 @@ def _participant(layout, context):
 
 
 def _transport(layout, context, domain, compact=False):
+    """The Simulate block, always open: play and bake, status, progress and the settings every run starts from."""
     p = domain.fumaris_liquid
     running = session.active()
     owned = running is not None and running.domain == domain
+    width = max(24, int(context.region.width / 7) - 8) if context.region else 48
     box = layout.box()
     box.label(text=domain.name, icon="MOD_FLUIDSIM")
-    width = max(24, int(context.region.width / 7) - 8) if context.region else 48
-    for line in textwrap.wrap(p.status, width=width):
-        box.label(text=line)
-    if not compact:
-        quality = box.row(align=True)
-        quality.enabled = running is None
-        current = {name: getattr(p, name) for name in operators.QUALITY_LEVELS["DRAFT"]}
-        for level, label in (("DRAFT", "Draft"), ("FINAL", "Final")):
-            match = all(abs(current[name] - value) < 1e-6 if isinstance(value, float) else current[name] == value
-                        for name, value in operators.QUALITY_LEVELS[level].items())
-            quality.operator("fumaris_liquid.quality", text=label, depress=match).level = level
-        box.operator("fumaris_liquid.copy_diagnostics", text="Copy Diagnostics", icon="COPYDOWN")
+    if owned:
+        icon = "RENDER_ANIMATION" if running.bake else "PAUSE" if running.paused else "PLAY"
+    else:
+        icon = "ERROR" if p.last_error else "CHECKMARK" if p.status.startswith("Bake complete") else "INFO"
+    _wrapped(box, p.status, width, icon=icon)
+    if p.progress:
+        _wrapped(box, p.progress, width, icon="TIME")
+    elif p.bake_summary and not owned:
+        _wrapped(box, p.bake_summary, width, icon="FILE_TICK", lines=2)
     if p.last_error:
-        error = box.column()
-        error.alert = True
-        for line in textwrap.wrap(p.last_error, width=width)[:6]:
-            error.label(text=line, icon="ERROR")
+        _wrapped(box, p.last_error + " (details: Diagnostics, at the bottom)", width, icon="ERROR", alert=True)
     if p.runtime_warning:
-        warning = box.column()
-        warning.alert = True
-        for line in textwrap.wrap(p.runtime_warning, width=width):
-            warning.label(text=line, icon="INFO")
+        _wrapped(box, p.runtime_warning, width, icon="INFO", alert=True)
     row = box.row(align=True)
+    row.scale_y = 1.2
     if owned:
         if running.bake:
             _control(row, "Cancel Bake", "CANCEL", "CANCEL")
@@ -116,8 +140,63 @@ def _transport(layout, context, domain, compact=False):
         if not compact:
             _control(row, "Bake", "BAKE", "RENDER_ANIMATION")
             _control(row, "Reset", "RESET", "FILE_REFRESH")
-    if not compact:
-        box.prop(p, "preview_rate")
+    if compact:
+        return
+    quality = box.row(align=True)
+    quality.enabled = running is None
+    current = {name: getattr(p, name) for name in operators.QUALITY_LEVELS["DRAFT"]}
+    for level, label in (("DRAFT", "Draft"), ("FINAL", "Final")):
+        match = all(abs(current[name] - value) < 1e-6 if isinstance(value, float) else current[name] == value
+                    for name, value in operators.QUALITY_LEVELS[level].items())
+        quality.operator("fumaris_liquid.quality", text=label, depress=match).level = level
+    settings = box.column()
+    fixed = settings.column()
+    fixed.enabled = running is None
+    fixed.prop(p, "particle_radius")
+    frames = fixed.column(align=True)
+    frames.prop(p, "bake_start", text="Frame Start")
+    frames.prop(p, "bake_end", text="End")
+    if running is not None:
+        settings.label(text="Stop the simulation to change radius or range", icon="INFO")
+    record = settings.row()
+    record.enabled = running is None
+    record.prop(p, "record_preview")
+    settings.prop(p, "preview_rate")
+
+
+def _diagnostics(layout, context, domain):
+    p = domain.fumaris_liquid
+    running = session.active()
+    width = max(24, int(context.region.width / 7) - 8) if context.region else 48
+    try:
+        info = json.loads(p.runtime_info) if p.runtime_info else {}
+    except ValueError:
+        info = {}
+    column = layout.column(align=True)
+    column.label(text="GPU: " + (info.get("device") or "not started yet"), icon="MEMORY")
+    response = running.last_response if running is not None and running.domain == domain else None
+    if response:
+        parts = []
+        for key, label in (("simulation_ms", "simulate"), ("meshing_ms", "mesh"), ("worker_ms", "frame")):
+            if isinstance(response.get(key), (int, float)):
+                parts.append(f"{label} {response[key]:.1f} ms")
+        if parts:
+            column.label(text="Last frame: " + ", ".join(parts), icon="TIME")
+        particles = response.get("particle_count", 0)
+        limit = exporters.limits(p)[0]
+        share = particles / limit if limit else 0
+        column.label(text=f"Particles: {particles:,} of {limit:,} ({share:.0%})", icon="ERROR" if share > 0.9 else "PARTICLES")
+        if share > 0.9:
+            _wrapped(column, "Almost at the particle budget: emitters stop adding liquid there. Raise Particle Budget "
+                             "(Advanced) or turn on Automatic Limits", width, alert=True)
+        whitewater = (response.get("whitewater") or {}).get("count")
+        if isinstance(whitewater, int) and p.whitewater_generate:
+            column.label(text=f"Whitewater: {whitewater:,} of {p.max_whitewater:,}")
+    elif running is None:
+        column.label(text="Play or bake to see live figures", icon="INFO")
+    if p.last_error:
+        _wrapped(layout, p.last_error, width, icon="ERROR", alert=True, lines=10)
+    layout.operator("fumaris_liquid.copy_diagnostics", text="Copy Diagnostics", icon="COPYDOWN")
 
 
 def _draw(layout, context):
@@ -151,24 +230,21 @@ def _draw(layout, context):
             layout.label(text="Assign this object to a domain's participant collection", icon="INFO")
         return
     if p.role != "DOMAIN" and not is_output:
-        _participant(layout, context)
         _transport(layout, context, domain, compact=True)
+        _participant(layout, context)
         return
     if domain is not None:
         p = domain.fumaris_liquid
         running = session.active()
         _transport(layout, context, domain)
-        box = _section(layout, "collections", "Participant Collections", closed=True)
+        box = _section(layout, "collections", "Participant Collections")
         if box is not None:
             collections = box.column()
             collections.enabled = running is None
             for name in ("emitter_collection", "collider_collection", "effector_collection", "outflow_collection"):
                 collections.prop(p, name)
-        box = _section(layout, "simulation", "Simulation", closed=True)
+        box = _section(layout, "simulation", "Liquid", closed=True)
         if box is not None:
-            structural = box.column()
-            structural.enabled = running is None
-            structural.prop(p, "particle_radius")
             for name in ("substeps", "step_size", "collider_step", "speed", "gravity", "flip_ratio"):
                 box.prop(p, name)
             box.prop(p, "viscosity_preset")
@@ -191,22 +267,13 @@ def _draw(layout, context):
             mist = look.row()
             mist.enabled = p.whitewater_mist > 0
             mist.prop(p, "whitewater_mist_radius")
-        box = _section(layout, "budgets", "Allocation and Budgets", closed=True)
-        if box is not None:
-            box.enabled = running is None
-            box.prop(p, "auto_budgets")
-            manual = box.column()
-            manual.enabled = not p.auto_budgets
-            manual.prop(p, "max_particles")
-            manual.prop(p, "max_boundary")
-            box.label(text="Initial GPU region (auto expands)")
-            box.prop(p, "bounds_min")
-            box.prop(p, "bounds_max")
-            box.label(text="Walls at the region's sides")
-            box.row(align=True).prop(p, "domain_walls")
-            box.prop(p, "remove_strays")
         box = _section(layout, "display", "Surface and Display", closed=True)
         if box is not None:
+            box.prop(p, "display")
+            if p.display == "PREVIEW":
+                box.label(text="GPU Surface is a fast preview; bake or use Surface to render", icon="INFO")
+            else:
+                box.label(text="Water and whitewater materials and nodes are editable", icon="INFO")
             structural = box.column()
             # Applied to the next frame of a run, and at once to the held frame
             # of a paused one; fixed during a bake so its frames stay alike.
@@ -215,27 +282,50 @@ def _draw(layout, context):
             structural.prop(p, "surface_smoothing")
             structural.prop(p, "mesh_cell_relative")
             structural.prop(p, "mesh_cell_factor" if p.mesh_cell_relative else "mesh_cell_size")
-            cells = structural.row()
-            cells.enabled = not p.auto_budgets
-            cells.prop(p, "max_mesh_cells")
             structural.prop(p, "surface_velocity")
-            box.prop(p, "display")
-            if p.display == "PREVIEW":
-                box.label(text="GPU Surface preview; bake for a renderable mesh")
-            else:
-                box.label(text="Water/whitewater materials and nodes are editable")
-        box = _section(layout, "cache", "Recording and Cache", closed=True)
+            if running is not None and running.bake:
+                box.label(text="Surface settings are fixed during a bake", icon="INFO")
+        box = _section(layout, "cache", "Cache and Export", closed=True)
         if box is not None:
             editable = box.column()
             editable.enabled = running is None
-            for name in ("record_preview", "cache_directory", "cache_slot", "bake_start", "bake_end", "cache_playback"):
-                editable.prop(p, name)
+            editable.prop(p, "cache_directory")
+            summary, protected = _slot_summary(domain)
+            slot = editable.row(align=True)
+            slot.prop(p, "cache_slot")
+            slot.operator("fumaris_liquid.cache_slot_new", text="", icon="ADD")
+            slot.operator("fumaris_liquid.cache_protect", text="", icon="LOCKED" if protected else "UNLOCKED", depress=protected)
+            editable.label(text=f"Slot '{p.cache_slot}': {summary}" + (" · protected" if protected else ""),
+                           icon="LOCKED" if protected else "DISK_DRIVE")
+            editable.prop(p, "cache_playback")
             row = editable.row(align=True)
             row.operator("fumaris_liquid.cache", text="Load Frame", icon="IMPORT").action = "LOAD"
-            row.operator("fumaris_liquid.cache", text="Delete Slot", icon="TRASH").action = "DELETE"
+            delete = row.row(align=True)
+            delete.enabled = not protected
+            delete.operator("fumaris_liquid.cache", text="Delete Slot", icon="TRASH").action = "DELETE"
             box.operator("fumaris_liquid.rebuild_surface", icon="MOD_REMESH")
             editable.operator("fumaris_liquid.export_alembic", icon="EXPORT")
             editable.operator("fumaris_liquid.export_vdb", icon="VOLUME_DATA")
+        box = _section(layout, "budgets", "Advanced", closed=True)
+        if box is not None:
+            box.enabled = running is None
+            box.label(text="Region (grows by itself to follow the liquid)")
+            box.prop(p, "bounds_min")
+            box.prop(p, "bounds_max")
+            box.label(text="Walls at the region's sides")
+            box.row(align=True).prop(p, "domain_walls")
+            box.prop(p, "remove_strays")
+            box.prop(p, "auto_budgets")
+            manual = box.column()
+            manual.enabled = not p.auto_budgets
+            manual.prop(p, "max_particles")
+            manual.prop(p, "max_boundary")
+            manual.prop(p, "max_mesh_cells")
+            if running is not None:
+                box.label(text="Stop the simulation to change these", icon="INFO")
+        box = _section(layout, "diagnostics", "Diagnostics", closed=True)
+        if box is not None:
+            _diagnostics(box, context, domain)
 
 
 class LIQUID_PT_physics(bpy.types.Panel):
