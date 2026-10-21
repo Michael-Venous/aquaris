@@ -1,6 +1,8 @@
 """One serialized native worker; all Blender access stays on the main thread."""
 
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
+import os
 import threading
 import json
 import time
@@ -60,6 +62,10 @@ class Session:
             raise RuntimeError("Bake end must be at least the start frame")
         self.last_settings = self._settings()
         self.last_response = None
+        # Pipelined frames (Bridge.send_frame): the next frame's request is with the worker while it meshes and
+        # sends this one, so its surface and its next simulation overlap. FUMARIS_LIQUID_PIPELINE=0: one at a time.
+        self.pipelined = os.environ.get("FUMARIS_LIQUID_PIPELINE", "1") != "0"
+        self.inflight = deque()  # (frame, preview only, sent at, export ms) of the requests sent, oldest first
         if not domain.fumaris_liquid.emitter_collection:
             raise RuntimeError("Assign an emitter collection or use Quick Setup")
         # No acquired cache, task or child exists before module start publishes
@@ -121,6 +127,131 @@ class Session:
         self.phase = "FRAME"
         self._sent = threading.Event()
         self._submit(self._step, header, payload, update, self._sent, work=True)
+
+    def _send_next(self):
+        """Pipelined: export the next frame and send it without waiting for the worker (main thread)."""
+        header, payload, update = self._prepared or self._export_frame()
+        self._prepared = None
+        preview_only = header.pop("_preview_only", False)
+        if update is not None:
+            header["settings_update"] = update
+        self.bridge.send_frame(header, payload)
+        self.inflight.append((header["frame"], preview_only, time.perf_counter(), self.export_ms))
+        self.frame += 1
+
+    def _receive_next(self):
+        """Pipelined: the oldest request's response, cached (worker thread)."""
+        frame, preview_only, sent, export_ms = self.inflight[0]
+        response, result = self.bridge.receive_frame()
+        response["worker_ms"] = (time.perf_counter() - sent) * 1000
+        response["export_ms"] = export_ms
+        response["frame"] = frame
+        if preview_only:
+            response["preview_only"] = True
+        if self.cache is not None:
+            self.cache.write(frame, response, result)
+        return response, result
+
+    def _poll_pipelined(self):
+        shown = None
+        if self.future is not None and not self.future.done():
+            if self.phase == "STARTING" and self._prepared is None and not self.stopping:
+                try:
+                    self._prepared = self._export_frame()
+                except Exception as exc:
+                    if self.error is None:
+                        self.error = str(exc)
+                    self.domain.fumaris_liquid.last_error = self.error
+                    self.request_stop()
+            return True
+        if self.future is not None:
+            try:
+                result = result_owned(self.future)
+                if self.phase == "STARTING":
+                    self.domain.fumaris_liquid.runtime_info = json.dumps(
+                        {key: result.get(key) for key in ("device", "backend", "protocol")}, ensure_ascii=False)
+                elif self.phase == "FRAME":
+                    self.inflight.popleft()
+                    self.last_response = result[0]
+                    display.apply(self.scene, self.domain, *result)
+                    shown = result[0]["frame"]
+                    if self.bake and shown >= self.last_frame:
+                        self.stopping = True
+                elif self.phase == "SNAPSHOT":
+                    self.last_response = result[0]
+                    display.apply(self.scene, self.domain, *result)
+                elif self.phase == "CLOSING":
+                    self.executor.shutdown(wait=False)
+                    if self.error:
+                        self.domain.fumaris_liquid.status = "Simulation failed"
+                        self.domain.fumaris_liquid.last_error = self.error
+                    elif self.bake and self.last_response is not None and \
+                            self.last_response.get("frame", -1) >= self.last_frame:
+                        # Requests run ahead of the frames received: complete once the last one was cached.
+                        self.domain.fumaris_liquid.status = "Bake complete"
+                    else:
+                        self.domain.fumaris_liquid.status = "Stopped"
+                    return False
+            except Exception as exc:
+                first_error = self.error is None and (not self.stopping or self.phase == "CLOSING")
+                if first_error:
+                    self.error = str(exc)
+                self.stopping = True
+                if self.error:
+                    self.domain.fumaris_liquid.last_error = self.error
+                    if first_error:
+                        print("Aquaris:", self.error)
+                if self.phase == "CLOSING":
+                    self.domain.fumaris_liquid.status = "Cleanup incomplete — retrying…"
+                    self._cleanup_retry_at = time.monotonic() + 1
+            self.future = None
+        if self.stopping:
+            if time.monotonic() < self._cleanup_retry_at:
+                return True
+            self.phase = "CLOSING"
+            self._submit(self._close)
+            return True
+        if self.inflight and (self.paused or self.bridge.share_wanted):
+            # Paused, or the shared memory has to grow: take what is in flight first.
+            self.phase = "FRAME"
+            self._submit(self._receive_next, work=True)
+            return True
+        if self.paused:
+            if self._remesh and self.last_response is not None:
+                self._remesh = False
+                try:
+                    settings = self._settings()
+                    update = settings if settings != self.last_settings else None
+                    self.last_settings = settings
+                    self.phase = "SNAPSHOT"
+                    self._submit(self._snapshot, update, self.last_response.get("frame", self.frame - 1),
+                                 self.recording or self.domain.fumaris_liquid.display == "SURFACE", work=True)
+                except Exception as exc:
+                    self.domain.fumaris_liquid.runtime_warning = str(exc)
+            else:
+                self.domain.fumaris_liquid.status = "Paused — solver state retained"
+            return True
+        try:
+            if self.bridge.share_wanted:
+                self.bridge.reshare()
+            exported = False
+            # Two frames in flight: the worker simulates the newer while it meshes and sends the older. A frame's
+            # shared payload has been displayed (and cached) before the request after the next one is sent.
+            while len(self.inflight) < 2 and not (self.bake and self.frame > self.last_frame):
+                self._send_next()
+                exported = True
+            if exported and shown is not None and not self.bake:
+                # Show the scene at the frame of the liquid shown (the exports ran ahead of it).
+                self.scene.frame_set(shown)
+            if self.inflight:
+                self.phase = "FRAME"
+                self._submit(self._receive_next, work=True)
+        except Exception as exc:
+            if self.error is None:
+                self.error = str(exc)
+            self.domain.fumaris_liquid.last_error = self.error
+            self.request_stop()
+        return True
 
     def _settings(self):
         settings = exporters.settings(self.scene, self.domain)
@@ -217,6 +348,8 @@ class Session:
             self._last_cleanup_report = key
 
     def poll(self):
+        if self.pipelined:
+            return self._poll_pipelined()
         if self.future is not None and not self.future.done():
             if self.phase == "STARTING" and self._prepared is None and not self.stopping:
                 # The solver is starting on its thread; sample the scene for the

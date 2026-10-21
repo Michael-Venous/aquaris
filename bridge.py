@@ -128,6 +128,9 @@ class Bridge:
         self.executable = Path(executable) if executable else None
         self.process = None
         self._lock = threading.Lock()
+        self._write_lock = threading.Lock()  # pipelined frames: send_frame on one thread, receive_frame on another
+        self._read_lock = threading.Lock()
+        self.share_wanted = None
         self._lifecycle = threading.Lock()
         self._closed = threading.Event()
         self._stderr = deque(maxlen=32)
@@ -212,60 +215,95 @@ class Bridge:
 
     def _exchange(self, action, header=None, payload=b""):
         with self._lock:
-            process = self.process
-            if self._closed.is_set() or process is None:
-                raise RuntimeError(self._failure("Liquid worker is not running"))
-            try:
-                exited = process.poll() is not None
-            except OSError as exc:
-                self._closed.set()
-                self._join_log_reader(.2)
-                raise RuntimeError(self._failure(str(exc))) from exc
-            if exited:
-                self._closed.set()
-                self._join_log_reader(.2)
-                raise RuntimeError(self._failure("Liquid worker is not running"))
+            process = self._send_locked(action, header, payload)
+            return self._receive_locked(process)
+
+    # Pipelined frames: send_frame() writes a frame request without waiting for its response, and
+    # receive_frame() returns the responses in the order the requests were sent. The worker makes a frame's
+    # response while it simulates the next one (src/worker.cpp, "pipelined"). The caller keeps at most two
+    # frames in flight, reads a frame's shared-memory payload before it sends the request after the next (the
+    # two regions alternate), and sends nothing else while any is in flight.
+    def send_frame(self, header, payload=b""):
+        with self._write_lock:
             message = dict(header or {})
-            message["action"] = action
-            writer = _WriteAttempt(process.stdin)
-            try:
-                write_message(writer, message, payload)
-            except Exception as exc:
-                if writer.attempted:
-                    self._closed.set()
-                    self._join_log_reader(.2)
-                # Keep the existing public error conversion, but classify by
-                # attempted output rather than exception type. A TypeError can
-                # also occur after the protocol envelope/header was written.
-                if isinstance(exc, (EOFError, OSError, ValueError)):
-                    raise RuntimeError(self._failure(str(exc))) from exc
-                raise
-            # Tell a waiting caller the worker has its request and is working on it.
-            callback, self.on_sent = getattr(self, "on_sent", None), None
-            if callback is not None:
-                callback()
-            try:
-                response, data = read_message(process.stdout)
-            except Exception as exc:
+            message["pipelined"] = True
+            self._send_locked("frame", message, payload)
+
+    def receive_frame(self):
+        with self._read_lock:
+            process = self.process
+            if process is None:
+                raise RuntimeError(self._failure("Liquid worker is not running"))
+            response, data = self._receive_locked(process)
+        needed = response.pop("payload_overflow", None)
+        if needed is not None and self._memory is not None:
+            self.share_wanted = max(2 * int(needed), 2 * self._memory.size)  # made room for once nothing is in flight
+        return response, data
+
+    def reshare(self):
+        """Grow the shared response memory after a frame overflowed it (nothing may be in flight)."""
+        wanted, self.share_wanted = getattr(self, "share_wanted", None), None
+        if wanted is not None and self._memory is not None:
+            self._share(wanted)
+
+    def _send_locked(self, action, header, payload):
+        process = self.process
+        if self._closed.is_set() or process is None:
+            raise RuntimeError(self._failure("Liquid worker is not running"))
+        try:
+            exited = process.poll() is not None
+        except OSError as exc:
+            self._closed.set()
+            self._join_log_reader(.2)
+            raise RuntimeError(self._failure(str(exc))) from exc
+        if exited:
+            self._closed.set()
+            self._join_log_reader(.2)
+            raise RuntimeError(self._failure("Liquid worker is not running"))
+        message = dict(header or {})
+        message["action"] = action
+        writer = _WriteAttempt(process.stdin)
+        try:
+            write_message(writer, message, payload)
+        except Exception as exc:
+            if writer.attempted:
                 self._closed.set()
                 self._join_log_reader(.2)
-                if isinstance(exc, (EOFError, OSError, ValueError)):
-                    raise RuntimeError(self._failure(str(exc))) from exc
-                raise
-            if not response.get("ok", False):
-                if response.get("fatal") is True:
-                    self._closed.set()
-                raise RuntimeError(response.get("error", "Liquid worker failed"))
-            index = response.pop("payload_memory", None)
-            if index is not None:
-                size = int(response.pop("payload_bytes"))
-                memory = self._memory
-                if memory is None or not 0 <= int(index) < 2 or not 0 <= size <= memory.size:
-                    self._closed.set()
-                    raise RuntimeError(self._failure("Liquid worker returned a payload outside the shared memory"))
-                data = memoryview(memory.maps[int(index)])[:size]
-                validate_blocks(response, data)
-            return response, data
+            # Keep the existing public error conversion, but classify by
+            # attempted output rather than exception type. A TypeError can
+            # also occur after the protocol envelope/header was written.
+            if isinstance(exc, (EOFError, OSError, ValueError)):
+                raise RuntimeError(self._failure(str(exc))) from exc
+            raise
+        # Tell a waiting caller the worker has its request and is working on it.
+        callback, self.on_sent = getattr(self, "on_sent", None), None
+        if callback is not None:
+            callback()
+        return process
+
+    def _receive_locked(self, process):
+        try:
+            response, data = read_message(process.stdout)
+        except Exception as exc:
+            self._closed.set()
+            self._join_log_reader(.2)
+            if isinstance(exc, (EOFError, OSError, ValueError)):
+                raise RuntimeError(self._failure(str(exc))) from exc
+            raise
+        if not response.get("ok", False):
+            if response.get("fatal") is True:
+                self._closed.set()
+            raise RuntimeError(response.get("error", "Liquid worker failed"))
+        index = response.pop("payload_memory", None)
+        if index is not None:
+            size = int(response.pop("payload_bytes"))
+            memory = self._memory
+            if memory is None or not 0 <= int(index) < 2 or not 0 <= size <= memory.size:
+                self._closed.set()
+                raise RuntimeError(self._failure("Liquid worker returned a payload outside the shared memory"))
+            data = memoryview(memory.maps[int(index)])[:size]
+            validate_blocks(response, data)
+        return response, data
 
     def _failure(self, message):
         tail = "\n".join(tuple(self._stderr))
