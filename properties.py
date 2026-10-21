@@ -154,6 +154,11 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                    description="Store a velocity for every surface vertex so renders can motion-blur "
                                                "the liquid; increases cache size by about a third")
     speed: FloatProperty(name="Simulation Speed", default=1, min=0.01, max=10)
+    preview_rate: EnumProperty(name="Preview Rate", default="UNLIMITED", items=[
+        ("UNLIMITED", "Unlimited", "Show live frames as fast as they are simulated"),
+        ("FPS_24", "24 fps", "Show at most 24 live frames a second; the GPU rests in between"),
+        ("SCENE", "Scene Frame Rate", "Show at most the scene's frame rate, so the preview plays in real time"),
+    ], description="Cap on how fast the live preview advances (bakes always run at full speed)")
     record_preview: BoolProperty(name="Record Preview", default=False,
                                  description="Write each simulated frame into the selected cache slot")
     cache_directory: StringProperty(name="Cache Directory", default="//fumaris_liquid_cache",

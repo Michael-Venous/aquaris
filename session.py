@@ -66,6 +66,7 @@ class Session:
         # sends this one, so its surface and its next simulation overlap. FUMARIS_LIQUID_PIPELINE=0: one at a time.
         self.pipelined = os.environ.get("FUMARIS_LIQUID_PIPELINE", "1") != "0"
         self.inflight = deque()  # (frame, preview only, sent at, export ms) of the requests sent, oldest first
+        self._show_at = 0.0  # when the next held live frame may be shown (Preview Rate)
         if not domain.fumaris_liquid.emitter_collection:
             raise RuntimeError("Assign an emitter collection or use Quick Setup")
         # No acquired cache, task or child exists before module start publishes
@@ -128,6 +129,41 @@ class Session:
         self._sent = threading.Event()
         self._submit(self._step, header, payload, update, self._sent, work=True)
 
+    def _preview_interval(self):
+        """Seconds between live frames shown, or 0 (Preview Rate: no cap; a bake is never held)."""
+        if self.bake:
+            return 0.0
+        rate = getattr(self.domain.fumaris_liquid, "preview_rate", "UNLIMITED")
+        if rate == "FPS_24":
+            return 1 / 24
+        if rate == "SCENE":
+            render = self.scene.render
+            return render.fps_base / max(render.fps, 1)
+        return 0.0
+
+    def _holding(self):
+        """Whether a received live frame waits for its time (Preview Rate). The worker meanwhile finishes what it
+        has been sent and then rests."""
+        if self.phase != "FRAME" or self.stopping or not self.future.done():
+            return False
+        interval = self._preview_interval()
+        if interval <= 0:
+            self._show_at = 0.0
+            return False
+        now = time.monotonic()
+        if now < self._show_at:
+            return True
+        # the next frame's time; after a stall the cadence starts again from now instead of catching up
+        due = self._show_at if now - self._show_at < interval else now
+        self._show_at = due + interval
+        return False
+
+    def wait_seconds(self):
+        """How long the session has nothing to do: a held frame's remaining wait (for the timer's interval)."""
+        if self.phase != "FRAME" or self.future is None or not self.future.done() or self.stopping:
+            return 0.0
+        return max(0.0, self._show_at - time.monotonic()) if self._preview_interval() > 0 else 0.0
+
     def _send_next(self):
         """Pipelined: export the next frame and send it without waiting for the worker (main thread)."""
         header, payload, update = self._prepared or self._export_frame()
@@ -163,6 +199,8 @@ class Session:
                         self.error = str(exc)
                     self.domain.fumaris_liquid.last_error = self.error
                     self.request_stop()
+            return True
+        if self.future is not None and self._holding():
             return True
         if self.future is not None:
             try:
@@ -362,6 +400,8 @@ class Session:
                     self.domain.fumaris_liquid.last_error = self.error
                     self.request_stop()
             return True
+        if self.future is not None and self._holding():
+            return True
         if self.future is not None:
             try:
                 result = result_owned(self.future)
@@ -479,7 +519,7 @@ def _timer():
     global _active
     if _active is None:
         return None
-    redraw = _active.future is None or _active.future.done()
+    redraw = (_active.future is None or _active.future.done()) and _active.wait_seconds() == 0  # (not while a frame is held)
     aborting = False
     try:
         if _active.domain.name not in _active.scene.objects:
@@ -515,7 +555,11 @@ def _timer():
                         area.tag_redraw()
         except (ReferenceError, RuntimeError):
             pass  # A removed UI area cannot stop polling an owned task/cache.
-    return 0.05 if _active.paused or _active.stopping else 0.001
+    if _active.paused or _active.stopping:
+        return 0.05
+    # a frame held for Preview Rate: come back when it is due
+    wait = _active.wait_seconds()
+    return min(max(wait, 0.001), 0.05) if wait > 0 else 0.001
 
 
 def start(scene, domain, bake=False):

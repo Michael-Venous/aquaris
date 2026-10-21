@@ -115,6 +115,8 @@ def _transport(layout, context, domain, compact=False):
         if not compact:
             _control(row, "Bake", "BAKE", "RENDER_ANIMATION")
             _control(row, "Reset", "RESET", "FILE_REFRESH")
+    if not compact:
+        box.prop(p, "preview_rate")
 
 
 def _draw(layout, context):
