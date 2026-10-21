@@ -70,7 +70,7 @@ def _realtime(p):
     """Settings measured to hold about 20-28 frames a second with a surface on
     an RTX 4060 Ti: 15,000-26,000 particles, surface built on the GPU."""
     p.particle_radius = 0.028
-    p.display = "SURFACE"
+    p.display = "PREVIEW"  # the fastest view; Surface or a bake for renderable geometry
     p.mesh_quality = "GPU_SMOOTH"
     p.mesh_cell_relative = True
     p.mesh_cell_factor = 1.0
@@ -82,14 +82,12 @@ def _realtime(p):
 
 
 def _detailed(p):
-    """The real-time settings at 2.7 times the particles (radius 0.02) with the
-    Smooth mesh built on the CPU: about 48,000 particles in the dam break."""
+    """The real-time settings (GPU preview, large steps) at 2.7 times the particles
+    (radius 0.02): about 48,000 particles in the dam break. The Final button
+    switches to the final mesh and small steps for a bake."""
     _realtime(p)
     p.particle_radius = 0.02
     p.mesh_cell_size = 0.02
-    p.mesh_quality = "SMOOTH"
-    # Small steps: what a splash reaches and how it settles no longer depend on Substeps.
-    p.step_size = 1.0
 
 
 def _collapse_outliners():

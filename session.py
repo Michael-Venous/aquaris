@@ -263,7 +263,7 @@ class Session:
                     self.last_settings = settings
                     self.phase = "SNAPSHOT"
                     self._submit(self._snapshot, update, self.last_response.get("frame", self.frame - 1),
-                                 self.recording or self.domain.fumaris_liquid.display == "SURFACE", work=True)
+                                 self.recording or self.domain.fumaris_liquid.display in {"SURFACE", "PREVIEW"}, work=True)
                 except Exception as exc:
                     self.domain.fumaris_liquid.runtime_warning = str(exc)
             else:
@@ -478,7 +478,7 @@ class Session:
                 self.last_settings = settings
                 self.phase = "SNAPSHOT"
                 self._submit(self._snapshot, update, self.last_response.get("frame", self.frame - 1),
-                             self.recording or self.domain.fumaris_liquid.display == "SURFACE", work=True)
+                             self.recording or self.domain.fumaris_liquid.display in {"SURFACE", "PREVIEW"}, work=True)
             except Exception as exc:
                 self.domain.fumaris_liquid.runtime_warning = str(exc)
         elif self.paused:

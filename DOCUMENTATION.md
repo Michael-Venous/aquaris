@@ -63,7 +63,7 @@ values produce more particles and more work. Surface cell size controls output
 mesh detail independently. Radius, particle budgets, region and mesh sizing
 should be chosen before starting; their UI is disabled while running. Gravity,
 Substeps, Step Size, Collider Step, Simulation Speed and FLIP Ratio can be adjusted while playing.
-**Substeps** is the fewest steps the solver takes per frame; it adds more by
+**Substeps** (default 1) is the fewest steps the solver takes per frame; it adds more by
 itself when the liquid or a collider moves fast, so 1 is enough for most
 scenes. Gravity is entered in metres per second squared and is
 converted through the scene's unit scale; positions/radii follow Blender units.
@@ -229,19 +229,33 @@ liquid's starting height. At Step Size 3 that jet is larger than at 1.
 The **Draft** and **Final** buttons under the domain's status set the surface
 settings that trade speed for quality in one step, and light up when the
 current settings match. Draft: solver Step Size 3, a surface cell
-of 1.5 radii and the **GPU Smooth (preview)** mesh quality, which builds the surface on the
-graphics card in milliseconds (about 25 ms for 200,000 particles on an RTX
-4060 Ti, against a fraction of a second on the CPU) and, like Smooth, closes
-and smooths the density field before meshing it: resting liquid is flat,
-splashes stay connected sheets, and slits and pores between particles fill.
-**GPU Fast (preview)** meshes the raw field and shows every particle-scale
-bump. Both draw droplets as simple shapes, ignore Droplet Size, and hand a
-frame that does not fit them to Fast with a warning. Because it fills gaps,
-GPU Smooth encloses more volume than GPU Fast in broken-up liquid (16-20%
-in a splashing dam break, almost none in a pool), joins bodies whose
-surfaces are within about three particle radii, and thins compact clumps of
-a few particles. Final: solver Step Size 1 and the Smooth mesh at a surface cell of one
-radius. Every setting stays editable afterwards.
+of 1.5 radii and the **Smooth** mesh quality. Final: solver Step Size 1 and the
+**Final** mesh quality at a surface cell of one radius. Every setting stays
+editable afterwards. New domains and every Quick Setup start with the fast
+preview settings (Smooth mesh, GPU Surface display, Step Size 3, Substeps 1).
+
+## Mesh Quality
+
+There are three surface qualities:
+
+- **Smooth** (default) builds the surface on the graphics card in
+  milliseconds (about 25 ms for 200,000 particles on an RTX 4060 Ti). It closes
+  and smooths the liquid's density field before meshing it: resting liquid is
+  flat, splashes stay connected sheets, and slits and pores between particles
+  fill. It joins bodies whose surfaces are within about three particle radii.
+- **Detailed** is also built on the graphics card, from the raw density field:
+  it keeps every particle-scale bump and ripple, and encloses less volume in
+  broken-up liquid (16-20% less in a splashing dam break).
+- **Final** builds the Smooth look on the processor, several times slower. It
+  is not the same computation: droplets are spheres of their exact volume (and
+  follow **Droplet Size**), the smoothing keeps each body's volume, and with a
+  Surface Cell above one radius the field is still sampled at one radius. The
+  two graphics-card qualities draw droplets as simple shapes and ignore Droplet
+  Size; a frame too large for them is meshed on the processor instead, with a
+  warning.
+
+The live GPU Surface preview always uses Smooth; the chosen quality applies to
+the Surface display, recordings and bakes.
 
 The surface settings (cell, Mesh Quality, Droplet Size, Surface Smoothing,
 motion vectors) can be changed during a run. They apply from the next frame;
@@ -380,7 +394,8 @@ one and a half particle radii at full strength, so thin sheets soften rather tha
 disappear. New domains start at 0.4 and the Quick Setups at 1.0; 0 gives the
 unfiltered reconstruction.
 
-**Surface Motion Vectors** stores a velocity for every surface vertex,
+**Motion Blur Data** stores a velocity for every surface vertex of baked and
+recorded frames (it has no visible effect in the viewport),
 interpolated from nearby particles, as the mesh's `velocity` point attribute.
 With **Render > Motion Blur** enabled Cycles then blurs the liquid along its
 motion even though the mesh topology changes every frame. It adds about a third
@@ -391,6 +406,12 @@ frames (a subframe set by hand, or a scene rendered through another scene's
 compositor) the nearer cached frame is shown.
 
 ## Interactive performance
+
+**Preview Rate** (under Play and Bake) sets how fast the live preview plays:
+**Scene Frame Rate** (default) shows frames at the scene's frame rate, so the
+liquid moves in real time and the graphics card rests between frames; **As Fast
+As Possible** shows each frame as soon as it is simulated. Bakes always run at
+full speed.
 
 Use **Surface and Display > Display > GPU Surface** for fast iteration. It is
 the default for new domains; existing saved display selections remain compatible.
@@ -404,14 +425,7 @@ on the GPU, whatever Mesh Quality is chosen for the recorded surface. Scene
 refraction and material graphs require **Surface** output. An unrecorded
 preview is not final render geometry. Switching a stopped preview to **Particles**
 restores diagnostic points; switching to **Surface** asynchronously meshes its
-exact frozen particles without advancing the simulation. **Mesh Quality > Final**
-refines coarse surface cells to retain thin features; **Fast** keeps the requested
-grid. Final can cost more time and memory. Both preserve detached droplets and
-smooth the surface while preserving component volume. **Smooth** builds the same round-kernel
-field, then closes it (dilate, smooth, erode over about a particle spacing)
-before meshing, which removes particle-scale bumps and gives more continuous
-surfaces. It costs more CPU time than Fast and joins closely spaced
-features; it does not change the simulation or correct underdense fluid. Fast and Final remain available for finer gap preservation.
+exact frozen particles without advancing the simulation (see Mesh Quality).
 Choose the quality before starting a simulation, or before switching a stopped
 GPU Surface preview to Surface. **Record Preview** and
 **Bake** always save the full surface, even when GPU Surface is selected. The

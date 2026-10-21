@@ -34,12 +34,12 @@ def _look_update(self, context):
 
 class LiquidProperties(bpy.types.PropertyGroup):
     role: EnumProperty(name="Liquid Role", items=[
-        ("NONE", "None", "Not a liquid participant"),
-        ("DOMAIN", "Domain", "Simulation settings and output owner"),
-        ("EMITTER", "Emitter", "Create liquid particles"),
-        ("COLLIDER", "Collider", "A sampled solid collision surface"),
-        ("OUTFLOW", "Outflow", "Remove liquid inside the evaluated bounding box"),
-        ("EFFECTOR", "Effector", "Force field around this object: force, wind, vortex or turbulence"),
+        ("NONE", "None", "This object takes no part in the liquid simulation"),
+        ("DOMAIN", "Domain", "The simulation itself: holds its settings and owns the liquid, surface and whitewater objects it creates"),
+        ("EMITTER", "Emitter", "Creates liquid: fills its shape once, or keeps pouring liquid in"),
+        ("COLLIDER", "Collider", "A solid the liquid cannot enter: walls, floors, containers, moving objects"),
+        ("OUTFLOW", "Outflow", "Deletes any liquid that enters this object's bounding box (a drain or a sink)"),
+        ("EFFECTOR", "Effector", "A force field around this object that pushes the liquid: force, wind, vortex or turbulence"),
     ], default="NONE")
     enabled: BoolProperty(name="Enabled", default=True,
                           description="Animate to enable or disable this participant")
@@ -49,10 +49,14 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                                "side, so liquid is held from both sides instead of only in front of its "
                                                "faces. Thinner than about a grid cell, the solver widens it to one cell")
     domain_id: StringProperty(name="Cache Identity", options={"HIDDEN"})
-    emitter_collection: PointerProperty(name="Emitters", type=bpy.types.Collection)
-    collider_collection: PointerProperty(name="Colliders", type=bpy.types.Collection)
-    effector_collection: PointerProperty(name="Effectors", type=bpy.types.Collection)
-    outflow_collection: PointerProperty(name="Outflows", type=bpy.types.Collection)
+    emitter_collection: PointerProperty(name="Emitters", type=bpy.types.Collection,
+                                        description="Collection whose objects with the Emitter role create this simulation's liquid")
+    collider_collection: PointerProperty(name="Colliders", type=bpy.types.Collection,
+                                         description="Collection whose objects with the Collider role are solid to this simulation's liquid")
+    effector_collection: PointerProperty(name="Effectors", type=bpy.types.Collection,
+                                         description="Collection whose objects with the Effector role push this simulation's liquid")
+    outflow_collection: PointerProperty(name="Outflows", type=bpy.types.Collection,
+                                        description="Collection whose objects with the Outflow role delete this simulation's liquid")
     output_collection: PointerProperty(name="Output", type=bpy.types.Collection)
     surface_object: PointerProperty(type=bpy.types.Object)
     whitewater_object: PointerProperty(type=bpy.types.Object)
@@ -66,54 +70,64 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("THICK", "Thick", "0.2 m²/s: a slow, heavy flow"),
         ("CUSTOM", "Custom", "Set Viscosity yourself")])
     viscosity: FloatProperty(name="Viscosity", default=0, min=0, max=100, soft_max=1, precision=5, step=0.01,
-                             description="Kinematic viscosity in m²/s (dynamic viscosity divided by density); 0 for water. "
-                                         "Slows, smooths and sticks the liquid to colliders; it does not make it coil. Can be changed while running")
+                             description="How thick the liquid is: 0 for water, higher for oil, honey or molten chocolate (pick a "
+                                         "preset above to start). Thick liquid flows slowly, smooths out and sticks to colliders. "
+                                         "In m²/s (kinematic viscosity). Can be changed while playing")
     surface_tension: FloatProperty(name="Surface Tension", default=0, min=0, max=1000, soft_max=50, precision=3, step=1,
-                                   description="Surface tension in N/m (water 0.073), taken with water's density. At the sizes a grid "
-                                               "this coarse resolves, water's own value shows little: raise it to make thin streams bead "
-                                               "and small bodies round off. High values take more substeps. Can be changed while running")
+                                   description="How strongly the liquid pulls itself together: thin streams break into beads and small "
+                                               "bodies round off. Water's real value (0.073) is too small to see at most particle sizes, "
+                                               "so raise it until the effect shows. High values slow the simulation. Can be changed while playing")
     flip_ratio: FloatProperty(name="FLIP Ratio", default=0.95, min=0, max=1, precision=2, subtype="FACTOR",
-                              description="How lively the liquid is. Each step a particle takes this share of its velocity from the "
-                                          "change the grid computed (FLIP: keeps detail and energy, noisier) and the rest from the grid's "
-                                          "own smooth velocity (PIC: calm, thicker-looking). 0.95 suits splashes; lower it for calm or "
-                                          "slow liquid, raise it towards 1 for the most energetic spray. Can be changed while running")
+                              description="How lively the liquid is. Higher keeps more splash, spray and small detail (0.95 suits "
+                                          "most water); lower gives calmer, smoother, thicker-looking motion. Can be changed while playing")
     step_size: FloatProperty(name="Step Size", default=3.0, min=0.5, max=3.0, precision=1,
-                             description="How far the fastest liquid may travel in one solver step, in grid cells. 3 is the fast "
-                                         "preview: about half the steps, but the height a splash reaches on a wall and how the "
-                                         "liquid settles then depend on Substeps. At 1 they no longer do, for about twice the "
-                                         "time per frame. Draft sets 3, Final sets 1. Can be changed while running")
+                             description="Speed against accuracy. How far the fastest liquid may move in one solver step, in grid "
+                                         "cells: 3 takes about half the steps of 1 and is the fast preview; 1 is the accurate "
+                                         "setting for final results (splashes run up walls and settle as they should). The Draft and "
+                                         "Final buttons set 3 and 1. Can be changed while playing")
     collider_step: FloatProperty(name="Collider Step", default=0.9, min=0.25, max=3.0, precision=2,
-                                 description="How far a moving collider near the liquid may travel in one solver step, in grid "
-                                             "cells (never more than Step Size). A fast collider sets the steps per frame: at 0.9 "
-                                             "a ball dropped into a pool keeps a clean crown and the floor holds. Higher values "
-                                             "take fewer steps (about 2x faster at 2.7) but the liquid it strikes breaks up more and, "
-                                             "at the highest, can be pushed through thin floors. Can be changed while running")
-    particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005,
-                                  max=2, subtype="DISTANCE",
-                                  description="World-space sampling and solver radius; restart to change")
-    substeps: IntProperty(name="Substeps", default=3, min=1, max=64,
-                          description="Fewest steps the solver takes per frame; it adds more by itself when the liquid or a collider moves fast")
-    gravity: FloatVectorProperty(name="Gravity", default=(0, 0, -9.81), size=3)
-    bounds_min: FloatVectorProperty(name="Minimum", default=(-3, -2, -1), size=3,
-                                   subtype="XYZ", description="World-space initial GPU region; expands automatically")
-    bounds_max: FloatVectorProperty(name="Maximum", default=(3, 2, 4), size=3,
-                                   subtype="XYZ", description="World-space initial GPU region; expands automatically")
+                                 description="Speed against accuracy for moving colliders. How far a collider near the liquid may "
+                                             "move in one solver step, in grid cells: fast colliders force extra steps. 0.9 keeps "
+                                             "impacts clean (a ball dropped into water throws up an intact crown and nothing is "
+                                             "pushed through the floor); up to 2.7 is about twice as fast while a collider moves "
+                                             "but its splash breaks up more. Can be changed while playing")
+    particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005, max=2, subtype="DISTANCE",
+                                   description="The simulation's resolution: the size of one liquid particle. Halving it shows finer "
+                                               "detail but takes about eight times the particles and much longer. Takes effect when "
+                                               "the simulation is started again")
+    substeps: IntProperty(name="Substeps", default=1, min=1, max=64,
+                          description="The fewest solver steps per frame. 1 is right for almost everything: the solver adds steps "
+                                      "by itself when liquid or a collider moves fast. Raise it only to smooth very violent motion. "
+                                      "Can be changed while playing")
+    gravity: FloatVectorProperty(name="Gravity", default=(0, 0, -9.81), size=3, subtype="ACCELERATION",
+                                 description="Acceleration pulling the liquid, in m/s² (Earth: 0, 0, -9.81). Can be changed while playing")
+    bounds_min: FloatVectorProperty(name="Minimum", default=(-3, -2, -1), size=3, subtype="XYZ",
+                                    description="One corner of the region the simulation starts with. The region grows by itself "
+                                                "to follow the liquid, so this only needs to roughly cover where the liquid starts. "
+                                                "With Walls, it is also where the walls are")
+    bounds_max: FloatVectorProperty(name="Maximum", default=(3, 2, 4), size=3, subtype="XYZ",
+                                    description="The opposite corner of the region the simulation starts with. The region grows by "
+                                                "itself to follow the liquid. With Walls, it is also where the walls are")
     domain_walls: EnumProperty(name="Walls", options={'ENUM_FLAG'}, default=set(),
-                               items=(("X_MIN", "-X", "Close the side at the region's minimum X"),
-                                      ("X_MAX", "+X", "Close the side at the region's maximum X"),
-                                      ("Y_MIN", "-Y", "Close the side at the region's minimum Y"),
-                                      ("Y_MAX", "+Y", "Close the side at the region's maximum Y"),
-                                      ("Z_MIN", "-Z", "Close the floor at the region's minimum Z"),
-                                      ("Z_MAX", "+Z", "Close the top at the region's maximum Z")),
-                               description="Sides of the region that are solid walls, as a collider would be; open sides "
-                                           "let the liquid leave. Restart to change")
+                               items=(("X_MIN", "-X", "Make the region's -X side a solid wall"),
+                                      ("X_MAX", "+X", "Make the region's +X side a solid wall"),
+                                      ("Y_MIN", "-Y", "Make the region's -Y side a solid wall"),
+                                      ("Y_MAX", "+Y", "Make the region's +Y side a solid wall"),
+                                      ("Z_MIN", "-Z", "Make the region's bottom a solid floor"),
+                                      ("Z_MAX", "+Z", "Make the region's top a solid lid")),
+                               description="Sides of the region (Minimum to Maximum) that act as solid walls, like an invisible "
+                                           "box. Liquid flows out through open sides. Takes effect when the simulation is started again")
     remove_strays: BoolProperty(name="Remove Escaped Liquid", default=True,
-                                description="Remove liquid that has fallen or been thrown well clear of every collider, emitter and the region above; it cannot come back, and would otherwise be simulated for as long as it keeps falling")
+                                description="Delete liquid that has fallen or flown far away from everything in the scene. It could "
+                                            "never come back, and would otherwise keep costing time as it falls forever")
     auto_budgets: BoolProperty(name="Automatic Limits", default=True,
-                               description="Let particles, collider samples and surface cells grow to the solver's own limits (4 million particles, 4 million collider samples, 64 million surface cells). Memory is taken as the simulation grows, so nothing is reserved in advance. Turn off to set smaller budgets that stop a runaway setup early")
-    max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000)
+                               description="Let the simulation grow as large as it needs (up to 4 million particles). Turn off to set "
+                                           "your own limits, which stop a setup that is accidentally far too big before it uses all "
+                                           "your graphics memory")
+    max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000,
+                               description="The most liquid particles allowed; the simulation stops with a message when it needs more")
     max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=4000000,
-                              description="Collider surface samples accepted per frame; finer particles need more")
+                              description="The most points used to describe collider surfaces; large colliders and small particles need more")
     whitewater_generate: BoolProperty(name="Generate Whitewater", default=False,
                                       description="Give off spray, foam and bubbles where liquid traps air or a wave crest breaks, "
                                                   "from each frame's liquid particles. Can be changed while running")
@@ -136,52 +150,61 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_mist_radius: FloatProperty(name="Mist Radius", default=4, min=1, max=20, update=_look_update,
                                           description="Reach of each whitewater particle's mist, in liquid particle radii")
     mesh_cell_relative: BoolProperty(update=_surface_update, name="Follow Particle Radius", default=True,
-                                     description="Size the surface cells from the particle radius, so the surface keeps its level of detail when the resolution changes")
+                                     description="Size the surface detail from the particle radius, so changing the radius keeps the "
+                                                 "surface looking the same. Turn off to set an absolute Surface Cell Size")
     mesh_cell_factor: FloatProperty(update=_surface_update, name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
-                                    description="Surface cell size in particle radii. 1 resolves every particle. With Fast quality 2 meshes about three times faster and looks softer; Final and Smooth refine the surface back to one radius, so a larger cell does not speed them up")
-    mesh_cell_size: FloatProperty(update=_surface_update, name="Surface Cell Size", default=0.04, min=0.005,
-                                 subtype="DISTANCE", description="Smaller cells give a finer surface")
-    max_mesh_cells: IntProperty(update=_surface_update, name="Surface Cell Budget", default=2000000,
-                                min=1000, max=64000000)
+                                    description="Surface detail, in particle radii: 1 shows every particle's worth of detail; larger "
+                                                "values mesh faster and look softer. Draft sets 1.5, Final sets 1")
+    mesh_cell_size: FloatProperty(update=_surface_update, name="Surface Cell Size", default=0.04, min=0.005, subtype="DISTANCE",
+                                  description="Surface detail as a distance: smaller is finer and slower to mesh")
+    max_mesh_cells: IntProperty(update=_surface_update, name="Surface Cell Budget", default=2000000, min=1000, max=64000000,
+                                description="The most surface cells meshed per frame; very large or very fine surfaces need more")
     # Numbered as before the GPU item existed (0.2.12 and earlier files); files
     # saved by 0.2.13 or 0.2.14 used the order GPU, Fast, Final, Smooth.
     mesh_quality: EnumProperty(name="Mesh Quality", update=_surface_update, items=[
-        ("GPU_SMOOTH", "GPU Smooth (preview)", "Built on the graphics card in milliseconds, then closed and smoothed as a field before it is meshed: resting liquid is flat, "
-                                               "splashes stay connected sheets, slits and pores fill. Droplets are simple and Droplet Size does not apply; "
-                                               "liquid closer together than about three particle radii joins; falls back to Fast when a frame does not fit", 4),
-        ("GPU", "GPU Fast (preview)", "Built on the graphics card in milliseconds on round kernels: shows every particle-scale bump. "
-                                      "Droplets are simple and Droplet Size does not apply; falls back to Fast when a frame is too large for it", 3),
-        ("FAST", "Fast", "Smooth surface on the requested grid", 0),
-        ("FINAL", "Final", "Refine coarse surface cells to retain thin features; uses more memory and time", 1),
-        ("SMOOTH", "Smooth", "The density field is closed and smoothed before it is meshed: removes particle-scale bumps and fills slits; slower than Fast and joins liquid closer than about three particle radii", 2),
-    ], default="FINAL")
+        ("GPU_SMOOTH", "Smooth", "Clean, smooth liquid made on the graphics card in milliseconds: flat at rest, connected sheets in "
+                                 "splashes. The default for previews and most renders", 4),
+        ("GPU", "Detailed", "Made on the graphics card in milliseconds, keeping every particle-sized bump and ripple: looks "
+                            "busier and more textured than Smooth", 3),
+        ("SMOOTH", "Final", "The Smooth look made on the processor for final renders: exact-size droplets (see Droplet Size), "
+                            "volume-preserving smoothing and finer sampling when Surface Cell is above 1. Several times slower; "
+                            "the live preview still uses Smooth", 2),
+    ], default="GPU_SMOOTH")
     droplet_scale: FloatProperty(update=_surface_update, name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
-                                 description="Size of detached droplets of one to three particles in the surface mesh. "
-                                             "1 keeps their particle volume; smaller values draw splashes as finer spray")
+                                 description="Size of small flying droplets in the surface mesh (Final quality only). 1 keeps their "
+                                             "real volume; smaller values draw splashes as finer spray")
     surface_smoothing: FloatProperty(update=_surface_update, name="Surface Smoothing", default=0.4, min=0, max=1, subtype="FACTOR",
-                                     description="Extra filtering of the surface mesh that removes particle-scale dimples "
-                                                 "while restoring each body's volume; costs meshing time and softens fine detail")
-    surface_velocity: BoolProperty(update=_surface_update, name="Surface Motion Vectors", default=True,
-                                   description="Store a velocity for every surface vertex so renders can motion-blur "
-                                               "the liquid; increases cache size by about a third")
-    speed: FloatProperty(name="Simulation Speed", default=1, min=0.01, max=10)
-    preview_rate: EnumProperty(name="Preview Rate", default="UNLIMITED", items=[
-        ("UNLIMITED", "Unlimited", "Show live frames as fast as they are simulated"),
-        ("FPS_24", "24 fps", "Show at most 24 live frames a second; the GPU rests in between"),
-        ("SCENE", "Scene Frame Rate", "Show at most the scene's frame rate, so the preview plays in real time"),
-    ], description="Cap on how fast the live preview advances (bakes always run at full speed)")
+                                     description="Extra smoothing of the liquid surface: higher removes small dimples and lumps but "
+                                                 "softens fine detail and takes a little longer")
+    surface_velocity: BoolProperty(update=_surface_update, name="Motion Blur Data", default=True,
+                                   description="Save how fast each point of the surface moves in baked and recorded frames, so the "
+                                               "liquid gets motion blur in renders (turn on Motion Blur in the render settings). It "
+                                               "has no visible effect in the viewport. Makes the cache about a third larger")
+    speed: FloatProperty(name="Simulation Speed", default=1, min=0.01, max=10,
+                         description="How fast time passes in the simulation: 0.5 is slow motion, 2 is double speed. Can be changed while playing")
+    preview_rate: EnumProperty(name="Preview Rate", default="SCENE", items=[
+        # (numbered as in 0.3.17, which also had "24 fps" as 1: legacy_settings turns that into the scene rate)
+        ("SCENE", "Scene Frame Rate", "Play the live preview at the scene's frame rate, so it moves in real time; the graphics card "
+                                      "rests between frames", 2),
+        ("UNLIMITED", "As Fast As Possible", "Show live frames as soon as they are simulated, even faster than real time", 0),
+    ], description="How fast the live preview plays (bakes always run at full speed)")
     record_preview: BoolProperty(name="Record Preview", default=False,
-                                 description="Write each simulated frame into the selected cache slot")
-    cache_directory: StringProperty(name="Cache Directory", default="//fumaris_liquid_cache",
-                                    subtype="DIR_PATH")
-    cache_slot: StringProperty(name="Cache Slot", default="main")
-    cache_playback: BoolProperty(name="Timeline Cache Playback", default=True)
-    bake_start: IntProperty(name="Start", default=1, min=-100000, max=100000)
-    bake_end: IntProperty(name="End", default=120, min=-100000, max=100000)
+                                 description="Save every frame of the live preview to the cache, so you can play it back, scrub "
+                                             "the timeline or render it without baking again")
+    cache_directory: StringProperty(name="Cache Directory", default="//fumaris_liquid_cache", subtype="DIR_PATH",
+                                    description="Folder where baked and recorded frames are saved (// is the .blend file's folder)")
+    cache_slot: StringProperty(name="Cache Slot", default="main",
+                               description="Name of this bake inside the cache folder. Use different names to keep several "
+                                           "versions and switch between them")
+    cache_playback: BoolProperty(name="Timeline Cache Playback", default=True,
+                                 description="Show the saved frame for the current timeline frame when you scrub or play the timeline")
+    bake_start: IntProperty(name="Start", default=1, min=-100000, max=100000, description="First frame to bake")
+    bake_end: IntProperty(name="End", default=120, min=-100000, max=100000, description="Last frame to bake")
     display: EnumProperty(name="Display", items=[
-        ("PREVIEW", "GPU Surface", "The meshed surface drawn straight to the viewport without updating Blender's mesh: the cheapest display. Switch to Surface, record or bake for renderable geometry"),
-        ("SURFACE", "Surface", "Renderable liquid mesh and whitewater"),
-        ("PARTICLES", "Particles", "Liquid particle diagnostic display"),
+        ("PREVIEW", "GPU Surface", "Draw the liquid surface straight from the graphics card: the fastest view, but it is not "
+                                   "Blender geometry and does not render. Bake or switch to Surface for renderable liquid"),
+        ("SURFACE", "Surface", "Real Blender meshes for the liquid and whitewater, with their materials: what renders"),
+        ("PARTICLES", "Particles", "Show the simulation's particles instead of a surface, to see what the solver is doing"),
     ], default="PREVIEW", update=_display_update)
     status: StringProperty(name="Status", default="Ready", options={"SKIP_SAVE"})
     last_error: StringProperty(name="Error", options={"SKIP_SAVE"})
@@ -189,32 +212,41 @@ class LiquidProperties(bpy.types.PropertyGroup):
     runtime_warning: StringProperty(name="Runtime Warning", options={"SKIP_SAVE"})
     # Emitter and collider settings.
     source_shape: EnumProperty(name="Source", items=[
-        ("MESH", "Closed Mesh", "Fill the evaluated watertight mesh"),
-        ("BOX", "Box", "Fill the object's transformed local bounding box"),
-        ("SPHERE", "Sphere", "Fill an ellipsoid inside the object's local bounding box"),
-        ("CYLINDER", "Cylinder", "Fill a transformed elliptical cylinder inside the local bounding box"),
-        ("POINTS", "Geometry Nodes / Vertices", "Use evaluated positions and point attributes"),
-        ("PARTICLES", "Particle System", "Use alive Blender particles"),
-        ("COLLECTION", "Collection Meshes", "Fill closed meshes from the source collection"),
-        ("VOLUME", "Volume / OpenVDB", "Convert a Blender Volume grid to a closed emission surface"),
-        ("INSTANCES", "Geometry Nodes Instances", "Fill evaluated instance meshes without modifying the node graph"),
-    ], default="MESH")
-    source_collection: PointerProperty(name="Source Collection", type=bpy.types.Collection)
+        ("MESH", "Closed Mesh", "Fill the inside of this mesh (it must be closed, without holes)"),
+        ("BOX", "Box", "Fill this object's bounding box"),
+        ("SPHERE", "Sphere", "Fill a sphere (or ellipsoid) fitted inside this object's bounding box"),
+        ("CYLINDER", "Cylinder", "Fill a cylinder fitted inside this object's bounding box"),
+        ("POINTS", "Geometry Nodes / Vertices", "Emit liquid at this object's vertices or Geometry Nodes points"),
+        ("PARTICLES", "Particle System", "Emit liquid at this object's Blender particles"),
+        ("COLLECTION", "Collection Meshes", "Fill the closed meshes in the Source Collection"),
+        ("VOLUME", "Volume / OpenVDB", "Fill the inside of a Blender Volume object or OpenVDB file"),
+        ("INSTANCES", "Geometry Nodes Instances", "Fill the meshes instanced by this object's Geometry Nodes"),
+    ], default="MESH", description="What shape of liquid this emitter makes")
+    source_collection: PointerProperty(name="Source Collection", type=bpy.types.Collection,
+                                       description="Collection whose closed meshes this emitter fills with liquid")
     emission_mode: EnumProperty(name="Emission", items=[
-        ("INITIAL", "Initial Fill", "Emit once when first enabled"),
-        ("CONTINUOUS", "Continuous Inflow", "Emit volume samples at the configured frequency"),
-    ], default="INITIAL")
+        ("INITIAL", "Initial Fill", "Fill the shape with liquid once, when the simulation starts or the emitter is enabled"),
+        ("CONTINUOUS", "Continuous Inflow", "Keep adding liquid while the emitter is enabled, like a tap or a hose"),
+    ], default="INITIAL", description="Whether the emitter fills once or keeps pouring")
     emission_frequency: FloatProperty(name="Inflow Frequency", default=24, min=0.1, max=120,
-                                      description="Volume emission ticks per simulation second")
-    velocity: FloatVectorProperty(name="Initial Velocity", default=(0, 0, 0), size=3,
-                                  description="World-space initial velocity")
-    normal_velocity: FloatProperty(name="Normal Velocity", default=0, min=-100, max=100)
-    inherited_motion: FloatProperty(name="Inherited Motion", default=1, min=0, max=10)
+                                      description="How many times per second a continuous emitter adds a layer of liquid. Raise it if "
+                                                  "a fast inflow comes out in visible slices")
+    velocity: FloatVectorProperty(name="Initial Velocity", default=(0, 0, 0), size=3, subtype="VELOCITY",
+                                  description="Speed and direction the new liquid starts with, in m/s")
+    normal_velocity: FloatProperty(name="Normal Velocity", default=0, min=-100, max=100,
+                                   description="Extra speed out of (positive) or into (negative) the emitter's surface, in m/s")
+    inherited_motion: FloatProperty(name="Inherited Motion", default=1, min=0, max=10,
+                                    description="How much of the emitter's own movement the new liquid takes along: 1 is all of it, "
+                                                "0 none (a moving emitter then leaves liquid behind at rest)")
     mask_attribute: StringProperty(name="Mask Attribute", default="",
-                                   description="Evaluated POINT-domain float attribute; samples below threshold do not emit")
-    mask_threshold: FloatProperty(name="Mask Threshold", default=0.5, min=0, max=1)
-    velocity_attribute: StringProperty(name="Velocity Attribute", default="velocity")
-    volume_grid: StringProperty(name="Volume Grid", default="density")
+                                   description="Name of a point float attribute: points whose value is below Mask Threshold emit "
+                                               "no liquid. Leave empty to emit everywhere")
+    mask_threshold: FloatProperty(name="Mask Threshold", default=0.5, min=0, max=1,
+                                  description="Points whose mask value is below this emit no liquid")
+    velocity_attribute: StringProperty(name="Velocity Attribute", default="velocity",
+                                       description="Name of a point vector attribute that sets each point's starting velocity")
+    volume_grid: StringProperty(name="Volume Grid", default="density",
+                                description="Which grid of the volume to fill from (usually density)")
     volume_threshold: FloatProperty(name="Volume Threshold", default=0.5, min=0,
                                     description="Isosurface level; use zero for a signed distance grid")
     volume_resolution: EnumProperty(name="Volume Resolution", items=[
@@ -259,13 +291,33 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                 description="Reach of the field around the object: full strength to three quarters of it, fading out by the radius")
 
 
+# Stored enum numbers of settings that no longer exist, and what they become: mesh_quality FAST (0) and FINAL (1)
+# (the CPU meshers without the closed, smoothed field) and preview_rate FPS_24 (1, 0.3.17).
+_LEGACY = {"mesh_quality": {0: "GPU", 1: "SMOOTH"}, "preview_rate": {1: "SCENE"}}
+
+
+@bpy.app.handlers.persistent
+def legacy_settings(*_):
+    for obj in bpy.data.objects:
+        props = getattr(obj, "fumaris_liquid", None)
+        if props is None:
+            continue
+        for name, mapping in _LEGACY.items():
+            stored = props.get(name)
+            if isinstance(stored, int) and stored in mapping:
+                setattr(props, name, mapping[stored])
+
+
 def register():
     bpy.utils.register_class(LiquidProperties)
+    bpy.app.handlers.load_post.append(legacy_settings)
     bpy.types.Object.fumaris_liquid = PointerProperty(type=LiquidProperties)
     bpy.types.Scene.fumaris_liquid_domain = PointerProperty(name="Liquid Domain", type=bpy.types.Object)
 
 
 def unregister():
+    if legacy_settings in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(legacy_settings)
     del bpy.types.Scene.fumaris_liquid_domain
     del bpy.types.Object.fumaris_liquid
     bpy.utils.unregister_class(LiquidProperties)

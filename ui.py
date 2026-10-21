@@ -211,14 +211,15 @@ def _draw(layout, context):
             # Applied to the next frame of a run, and at once to the held frame
             # of a paused one; fixed during a bake so its frames stay alike.
             structural.enabled = running is None or not running.bake
+            structural.prop(p, "mesh_quality")
+            if p.mesh_quality == "SMOOTH":
+                structural.prop(p, "droplet_scale")  # (the Final mesh's droplets only)
+            structural.prop(p, "surface_smoothing")
             structural.prop(p, "mesh_cell_relative")
             structural.prop(p, "mesh_cell_factor" if p.mesh_cell_relative else "mesh_cell_size")
             cells = structural.row()
             cells.enabled = not p.auto_budgets
             cells.prop(p, "max_mesh_cells")
-            structural.prop(p, "mesh_quality")
-            structural.prop(p, "droplet_scale")
-            structural.prop(p, "surface_smoothing")
             structural.prop(p, "surface_velocity")
             box.prop(p, "display")
             if p.display == "PREVIEW":

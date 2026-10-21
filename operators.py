@@ -45,8 +45,8 @@ class LIQUID_OT_setup(bpy.types.Operator):
         ("SPLASH", "Splash (real-time)", "A ball dropped into a pool, sized to play back live with a surface"),
         ("REALTIME_DAM_BREAK", "Dam Break (real-time)", "A wall of water released into pillars, sized to play back live"),
         ("REALTIME_POUR", "Pour (real-time)", "Continuous inflow into a pool, sized to play back live"),
-        ("DAM_BREAK", "Dam Break (detailed)", "The dam break at a finer resolution with the Smooth mesh, meant for baking"),
-        ("POUR", "Pour (detailed)", "The pour at a finer resolution with the Smooth mesh, meant for baking"),
+        ("DAM_BREAK", "Dam Break (detailed)", "The dam break with about three times the particles; press Final before baking"),
+        ("POUR", "Pour (detailed)", "The pour with about three times the particles; press Final before baking"),
     ], default="SPLASH")
 
     @classmethod
@@ -344,12 +344,13 @@ QUALITY_LEVELS = {
 class LIQUID_OT_quality(bpy.types.Operator):
     bl_idname = "fumaris_liquid.quality"
     bl_label = "Set Liquid Quality"
-    bl_description = ("Set the surface settings that trade speed for quality in one step. Draft: GPU Smooth mesh "
-                      "with a surface cell of 1.5 particle radii. Final: Smooth mesh with a cell of one radius. "
-                      "Each setting stays editable afterwards")
+    bl_description = ("Switch several settings between fast previewing and final quality at once. Draft: Smooth "
+                      "mesh on the graphics card with coarser surface detail, and large solver steps. Final: the Final "
+                      "mesh at full surface detail and small, accurate solver steps (about twice the time). Each setting "
+                      "can still be changed afterwards")
     bl_options = {"REGISTER", "UNDO"}
-    level: bpy.props.EnumProperty(items=[("DRAFT", "Draft", "Surface built on the graphics card on a coarser cell; fast to mesh and to display"),
-                                         ("FINAL", "Final", "The Smooth surface at one cell per particle radius")])
+    level: bpy.props.EnumProperty(items=[("DRAFT", "Draft", "Fast settings for previewing and iterating"),
+                                         ("FINAL", "Final", "Accurate settings for the final bake and render")])
 
     def execute(self, context):
         domain = domain_for(context)
