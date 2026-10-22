@@ -165,6 +165,29 @@ def _attribute(data, name, vector=False):
     return result
 
 
+MAX_INFLOW_RATE = 480.0  # layers a second at most (each one ends a substep and reads the liquid back)
+
+
+def _inflow_rate(obj, props, radius):
+    """Layers a second a continuous emitter needs so that its liquid has moved at most half the emitter's length
+    along the flow between two: fewer leave gaps, a fast stream from a short emitter comes out in slices."""
+    velocity = Vector(props.velocity)
+    speed = velocity.length + abs(props.normal_velocity)
+    if speed <= 0.0:
+        return 0.0
+    direction = velocity.normalized() if velocity.length > 0 else Vector((0.0, 0.0, 1.0))
+    corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+    along = [corner.dot(direction) for corner in corners]
+    if props.normal_velocity and velocity.length == 0:
+        # flow out of the surface: the thinnest extent of the emitter
+        size = sorted(max(c[a] for c in corners) - min(c[a] for c in corners) for a in range(3))
+        extent = size[0]
+    else:
+        extent = max(along) - min(along)
+    extent = max(extent, 2.0 * radius)  # one particle spacing at least
+    return min(MAX_INFLOW_RATE, speed / (0.5 * extent))
+
+
 def _inside(bvh, position, epsilon, max_distance):
     direction = Vector((0.812381, 0.331277, 0.480129)).normalized()
     origin = Vector(position)
@@ -872,7 +895,7 @@ class SceneExporter:
                 # all but the first, so frequency stops increasing real flow.
                 pointer = obj.as_pointer()
                 next_tick = max(self.time, self.next_emission.get(pointer, self.time))
-                frequency = props.emission_frequency
+                frequency = max(props.emission_frequency, _inflow_rate(obj, props, p.particle_radius))
                 repetitions = max(0, math.ceil((self.time + dt - next_tick - 1e-10) * frequency))
                 emission_times = [max(0.0, next_tick + tick / frequency - self.time)
                                   for tick in range(repetitions)]

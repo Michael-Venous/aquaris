@@ -250,9 +250,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("INITIAL", "Initial Fill", "Fill the shape with liquid once, when the simulation starts or the emitter is enabled"),
         ("CONTINUOUS", "Continuous Inflow", "Keep adding liquid while the emitter is enabled, like a tap or a hose"),
     ], default="INITIAL", description="Whether the emitter fills once or keeps pouring")
-    emission_frequency: FloatProperty(name="Inflow Frequency", default=24, min=0.1, max=120,
-                                      description="How many times per second a continuous emitter adds a layer of liquid. Raise it if "
-                                                  "a fast inflow comes out in visible slices")
+    emission_frequency: FloatProperty(name="Inflow Frequency", default=24, min=0.1, max=480,
+                                      description="How many times per second a continuous emitter at least adds a layer of liquid. "
+                                                  "It adds them more often by itself when the liquid would otherwise leave the "
+                                                  "emitter in slices (a fast flow from a short emitter)")
     velocity: FloatVectorProperty(name="Initial Velocity", default=(0, 0, 0), size=3, subtype="VELOCITY",
                                   description="Speed and direction the new liquid starts with, in m/s")
     normal_velocity: FloatProperty(name="Normal Velocity", default=0, min=-100, max=100,
