@@ -224,7 +224,8 @@ def create(context, preset="DAM_BREAK"):
         tray.fumaris_liquid.role = "COLLIDER"
         tray.fumaris_liquid.collider_margin = 0.05
         tray.display_type = "WIRE"
-        emitter = _box("Initial Pool", emitters, origin + Vector((0, -0.05, 0.15)), (2.4, 2.9, 0.3))
+        # 0.35 high: no liquid is made within the tray's 0.05 m Margin, so this fills it to the level of before.
+        emitter = _box("Initial Pool", emitters, origin + Vector((0, -0.05, 0.175)), (2.4, 2.9, 0.35))
         emitter.fumaris_liquid.emission_mode = "INITIAL"
         # Wall to wall and down on the tray floor's margin, so the water stays in front of it.
         paddle = _box("Wave Paddle", colliders, origin + Vector((0, 1.75, 0.45)), (2.38, 0.12, 0.8))

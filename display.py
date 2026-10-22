@@ -564,6 +564,8 @@ def apply(scene, domain, header, payload):
         _attribute(p.whitewater_object.data, "whitewater_type", block(header, payload, "whitewater_types", 1, True), True)
         # Seconds this whitewater particle has left (foam dissolves when it reaches 0), for fading it out.
         _attribute(p.whitewater_object.data, "whitewater_life", block(header, payload, "whitewater_life", 1), scalar=True)
+        # A whitewater particle's number from its birth to its removal: stable across frames, for random size or culling.
+        _attribute(p.whitewater_object.data, "id", block(header, payload, "whitewater_ids", 1, True), True)
     update_visibility(domain)
     status = f"Frame {header.get('frame', scene.frame_current)} · {len(positions):,} liquid"
     if len(whitewater):

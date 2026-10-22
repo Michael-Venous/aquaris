@@ -16,7 +16,7 @@ VEC3_FIELDS = frozenset({"positions", "velocities", "boundary_positions",
                         "boundary_velocities", "boundary_normals", "vertices", "vertex_velocities", "vertex_normals", "whitewater_positions",
                         "whitewater_velocities"})
 UINT3_FIELDS = frozenset({"triangles"})
-UINT_FIELDS = frozenset({"whitewater_types", "ids"})
+UINT_FIELDS = frozenset({"whitewater_types", "ids", "whitewater_ids"})
 # One float per point: a particle's age [s], a whitewater particle's remaining life [s].
 FLOAT_FIELDS = frozenset({"ages", "whitewater_life"})
 

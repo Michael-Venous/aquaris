@@ -285,13 +285,13 @@ Switching **Display** changes surface/particle visibility. All output objects
 are tagged with their domain owner; changing another domain does not rewrite
 them.
 
-This version generates no whitewater, and the **Whitewater** output object
-stays empty in a new simulation. A cache baked by an earlier version keeps its
-foam, spray and bubbles, and **Whitewater from Earlier Caches** in the panel
-controls how they are shown: **Show Whitewater** switches them on or off (the
-Quick Setups leave it off), and the two look settings change an existing
-cache at once, without rebaking. The points carry `velocity` and an integer
-`whitewater_type` (1 spray, 2 foam, 3 bubble); an editable Geometry Nodes
+With **Generate Whitewater** on, foam, spray and bubbles are simulated and
+written to the **Whitewater** output object; **Show Whitewater** switches them
+on or off in the viewport and render, and the look settings change an existing
+cache at once, without rebaking. The points carry `velocity`, an integer
+`whitewater_type` (1 spray, 2 foam, 3 bubble), `whitewater_life` (seconds
+left) and an integer `id` that stays with a particle from its birth to its
+removal (for a random size or culling that does not flicker); an editable Geometry Nodes
 graph turns them into a point cloud of small spheres, which Cycles blurs along
 `velocity` when Motion Blur is on. An unedited instanced-sphere graph saved by
 0.2.8 or earlier is converted in place the next time a frame is shown; an
@@ -343,11 +343,8 @@ fresh simulation, stop and Play again; initial-fill sources are seeded again.
 
 ## Current fidelity and feature boundaries
 
-The liquid has no viscosity and no surface tension: it behaves like water at
-the scale of the scene, splashes break up into droplets of single particles,
-and thick or clinging liquids cannot be made. Nothing generates foam, spray or
-bubbles. There are no force fields. Each of these was a feature of the removed
-particle solver (see What this version does and does not do).
+Viscosity, surface tension, whitewater and force fields (effectors) are
+simulated on the grid solver; see their sections above.
 
 Known limits of the solver, measured by its validation suite
 (`tools/tests/flip_validation_gpu_test.cpp` in the source archive): at Step

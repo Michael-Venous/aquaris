@@ -26,6 +26,12 @@ def _viscosity_preset(self, context):
         self.viscosity = VISCOSITY_PRESETS[self.viscosity_preset]
 
 
+def _range_update(self, context):
+    # A Start or End set (by a script: the panel shows them only with Use Timeline off) is the range wanted.
+    if self.use_scene_frame_range:
+        self.use_scene_frame_range = False
+
+
 def _role_update(self, context):
     # A new domain follows the timeline, so its range matches the scene without editing (as in Fumaris). A domain
     # whose Start and End were already changed keeps its own range.
@@ -204,8 +210,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                            "versions and switch between them")
     cache_playback: BoolProperty(name="Timeline Cache Playback", default=True,
                                  description="Show the saved frame for the current timeline frame when you scrub or play the timeline")
-    bake_start: IntProperty(name="Start", default=1, min=-100000, max=100000, description="First frame to bake")
-    bake_end: IntProperty(name="End", default=120, min=-100000, max=100000, description="Last frame to bake")
+    bake_start: IntProperty(name="Start", default=1, min=-100000, max=100000, description="First frame to bake",
+                            update=_range_update)
+    bake_end: IntProperty(name="End", default=120, min=-100000, max=100000, description="Last frame to bake",
+                          update=_range_update)
     use_scene_frame_range: BoolProperty(name="Use Timeline", default=False,
                                         description="Bake the scene's timeline range, starting Warmup frames early, "
                                                     "instead of a separate Start and End. On for new domains")

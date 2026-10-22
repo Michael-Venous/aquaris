@@ -217,13 +217,15 @@ class SceneExporter:
         self.last_boundary_parts = None
         self.solid_cache = {}
 
-    def _solid(self, key, geometry):
+    def _solid(self, key, geometry, extra=0.0):
+        """A collider for excluding emission: its BVH, whether closed, bounds, ray length, and its Margin (extra),
+        the thickness the solver's samples add to its faces."""
         world, triangles = geometry[:2]
         if not len(triangles):
             return None
         cached = self.solid_cache.get(key)
         same_topology = cached is not None and np.array_equal(cached[1], triangles)
-        if same_topology and np.array_equal(cached[0], world):
+        if same_topology and np.array_equal(cached[0], world) and cached[7] == extra:
             return cached[2:]
         if same_topology:
             closed = cached[3]
@@ -234,20 +236,23 @@ class SceneExporter:
         bvh = BVHTree.FromPolygons([Vector(v) for v in world], triangles.tolist(), all_triangles=True)
         minimum, maximum = world.min(axis=0), world.max(axis=0)
         distance = float(np.linalg.norm(maximum-minimum)*2+1)
-        self.solid_cache[key] = (world, triangles, bvh, closed, minimum, maximum, distance)
-        return bvh, closed, minimum, maximum, distance
+        self.solid_cache[key] = (world, triangles, bvh, closed, minimum, maximum, distance, extra)
+        return bvh, closed, minimum, maximum, distance, extra
 
     def _clip_solids(self, positions, velocities, solids, margin):
         if not len(positions):
             return positions, velocities, 0
         keep = np.ones(len(positions), dtype=bool)
         epsilon = max(1e-7, margin*1e-4)
-        for bvh, closed, minimum, maximum, distance in solids:
-            candidates = np.flatnonzero(keep & np.all((positions >= minimum-margin) &
-                                                      (positions <= maximum+margin), axis=1))
+        for bvh, closed, minimum, maximum, distance, extra in solids:
+            # A collider with a Margin is that much thicker in the solver (open meshes on both sides): liquid born
+            # within it would be inside the solid and pushed out of either side, below the floor too.
+            reach = margin + extra
+            candidates = np.flatnonzero(keep & np.all((positions >= minimum-reach) &
+                                                      (positions <= maximum+reach), axis=1))
             for index in candidates:
                 position = positions[index]
-                hit, normal, face, nearest = bvh.find_nearest(Vector(position), margin)
+                hit, normal, face, nearest = bvh.find_nearest(Vector(position), reach)
                 # A particle closer to a collider's face than its own radius
                 # would be in it: the grid solver's colliders are one-sided
                 # faces at their samples, so liquid may be born touching one.
@@ -292,14 +297,15 @@ class SceneExporter:
                     continue
                 birth_world = old_world + (world - old_world) * alpha
                 minimum, maximum = birth_world.min(axis=0), birth_world.max(axis=0)
-                candidates = np.all((positions >= minimum-margin) &
-                                    (positions <= maximum+margin), axis=1)
+                extra = end_cache[7]
+                candidates = np.all((positions >= minimum-margin-extra) &
+                                    (positions <= maximum+margin+extra), axis=1)
                 if not np.any(candidates):
                     continue
                 bvh = BVHTree.FromPolygons([Vector(v) for v in birth_world],
                                           triangles.tolist(), all_triangles=True)
                 distance = float(np.linalg.norm(maximum-minimum)*2+1)
-                solid = (bvh, end_cache[3], minimum, maximum, distance)
+                solid = (bvh, end_cache[3], minimum, maximum, distance, extra)
                 # At most one intermediate BVH per collider, regardless of ticks.
                 self.birth_solid_cache[key] = (alpha, solid)
                 solids.append(solid)
@@ -759,7 +765,12 @@ class SceneExporter:
         The box grows around the region and every collider and emitter seen so
         far; liquid beyond it by a margin, below or to the sides, has nothing
         left to land on. The side gravity points away from stays open, since
-        liquid thrown that way comes back.
+        liquid thrown that way comes back. Below (where gravity points) the
+        margin is small: liquid that has fallen past every solid, source and
+        the region's floor only falls further, and while it did the solver's
+        grid grew after it and its speed shortened every substep (2026-10-22:
+        liquid leaking through a beach's ground fell 6 m in a second, and the
+        solver's frame time more than tripled).
         """
         low, high = np.array(p.bounds_min, dtype=np.float64), np.array(p.bounds_max, dtype=np.float64)
         for cloud in clouds:
@@ -769,6 +780,7 @@ class SceneExporter:
             low, high = np.minimum(low, self.reach[0]), np.maximum(high, self.reach[1])
         self.reach = low, high
         margin = max(1.0, 0.25 * float((high - low).max()))
+        below = max(0.1, 10.0 * float(p.particle_radius))
         gravity = np.array(p.gravity, dtype=np.float64)
         down = int(np.abs(gravity).argmax()) if np.any(gravity) else None
         slabs = []
@@ -776,11 +788,13 @@ class SceneExporter:
             for side in (0, 1):
                 if axis == down and (gravity[axis] < 0) == bool(side):
                     continue
+                # the side gravity points to: just below everything
+                reach = below if axis == down else margin
                 a, b = np.full(3, -STRAY_REACH), np.full(3, STRAY_REACH)
                 if side:
-                    a[axis] = high[axis] + margin
+                    a[axis] = high[axis] + reach
                 else:
-                    b[axis] = low[axis] - margin
+                    b[axis] = low[axis] - reach
                 slabs.append([a.tolist(), b.tolist()])
         return slabs
 
@@ -820,7 +834,7 @@ class SceneExporter:
                     raise
             collider_geometry[obj.as_pointer()] = geometries
             for key, geometry in geometries:
-                solid = self._solid(key, geometry)
+                solid = self._solid(key, geometry, float(props.collider_margin))
                 solid_keys.add(key)
                 if solid is not None:
                     solids.append(solid)
