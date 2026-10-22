@@ -189,6 +189,18 @@ def _inflow_rate(obj, props, radius):
     return min(MAX_INFLOW_RATE, speed / (0.5 * extent))
 
 
+def _stretched_within(edges, rastered, spacing, limit=1.25):
+    """Whether triangles whose edges were `rastered` long are now `edges` long within `limit` either way. A deforming
+    collider keeps its samples (and their number) while it does: re-rastered every frame, its sample count changed,
+    so the solver received and rebuilt all its collider fields every frame instead of the part that moved
+    (2026-10-22: a beach's deforming wave-maker, 184 ms of each 214 ms step)."""
+    if edges.shape != rastered.shape:
+        return False
+    floor = spacing * 1e-5
+    ratio = (edges + floor) / (rastered + floor)
+    return bool(np.all((ratio <= limit) & (ratio >= 1.0 / limit)))
+
+
 def _inside(bvh, position, epsilon, max_distance):
     direction = Vector((0.812381, 0.331277, 0.480129)).normalized()
     origin = Vector(position)
@@ -659,10 +671,12 @@ class SceneExporter:
         lattice = self.boundary_lattice.get(history_key)
         if (lattice is not None and lattice[1] == spacing and lattice[4] == facing and np.array_equal(lattice[0], triangles)
                 and (old_world is not None or previous is None)
-                and np.allclose(edges, lattice[2], rtol=1e-5, atol=spacing * 1e-5)):
+                and _stretched_within(edges, lattice[2], spacing)):
             # The mesh has moved without changing shape (an animated rigid
-            # object, the usual moving collider): its samples keep their place
-            # on the surface, so only their positions are recomputed instead
+            # object, the usual moving collider), or bent with its triangles
+            # stretched by less than a quarter (a deforming wave-maker): its
+            # samples keep their place on the surface, so only their positions
+            # are recomputed instead
             # of rastering every triangle again.
             owner, weights = lattice[3], lattice[5]
             result = np.einsum('nk,nkj->nj', weights, corners[owner])
