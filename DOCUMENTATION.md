@@ -394,7 +394,9 @@ that much and ripples with them: water in a glass then shows a thin, uneven
 layer of air against the glass that refracts like crushed ice. With it, the
 surface that faces a collider within 1.5 radii is moved onto the collider's
 face and a quarter radius into it; the top of a thin film on a floor stays
-where it is.
+where it is. It applies to the Surface display, recordings and bakes; the GPU
+Surface preview shows the surface as simulated (the lookups would cost a fast
+scene a fifth of its frame rate).
 
 **Surface Smoothing** filters the finished surface mesh to remove the
 particle-scale dimples that make calm liquid look hammered. Vertices move at
