@@ -87,6 +87,7 @@ def settings(scene, domain):
         "mesh_quality": p.mesh_quality,
         "droplet_scale": p.droplet_scale,
         "surface_smoothing": p.surface_smoothing,
+        "surface_contact": bool(getattr(p, "surface_contact", True)),
         "surface_velocity": p.surface_velocity,
         "max_mesh_cells": limits(p)[2],
         "whitewater_generate": p.whitewater_generate,

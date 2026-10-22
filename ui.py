@@ -286,6 +286,7 @@ def _draw(layout, context):
             structural.enabled = running is None or not running.bake
             structural.prop(p, "mesh_quality")
             structural.prop(p, "surface_smoothing")
+            structural.prop(p, "surface_contact")
             structural.prop(p, "mesh_cell_relative")
             structural.prop(p, "mesh_cell_factor" if p.mesh_cell_relative else "mesh_cell_size")
             structural.prop(p, "surface_velocity")

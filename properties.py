@@ -185,6 +185,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
     droplet_scale: FloatProperty(update=_surface_update, name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
                                  description="Size of small flying droplets in the surface mesh (Final quality only). 1 keeps their "
                                              "real volume; smaller values draw splashes as finer spray")
+    surface_contact: BoolProperty(update=_surface_update, name="Stick to Colliders", default=True,
+                                  description="Let the liquid's surface meet colliders it rests against (a glass, a floor, a tank "
+                                              "wall) instead of standing off them by about a particle radius. Without it, water in "
+                                              "a glass shows a thin uneven layer of air against the glass")
     surface_smoothing: FloatProperty(update=_surface_update, name="Surface Smoothing", default=1.0, min=0, max=1, subtype="FACTOR",
                                      description="Smoothing of the liquid surface: higher removes small dimples and lumps but "
                                                  "softens fine detail and takes a little longer")
