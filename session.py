@@ -3,6 +3,7 @@
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 import os
+import queue
 import threading
 import json
 import time
@@ -13,10 +14,12 @@ from bpy.app.handlers import persistent
 from . import display, exporters
 from .bridge import Bridge
 from .cache import Cache
+from .properties import frame_range
 from ._tasks import result_owned, submit_owned
 
 _active = None
 _playback_guard = False
+BAKE_SHOW_SECONDS = 0.1  # a bake shows a frame in the viewport at most this often (every frame is cached)
 _render_frames = {}  # Scene pointer -> time being rendered, in frames.
 _shown_frames = {}  # Scene pointer -> cached frame last shown by playback.
 
@@ -37,6 +40,52 @@ def _progress(step, *args):
         getattr(manager, "progress_" + step)(*args)
     except Exception:
         pass
+
+
+class _Sender:
+    """Writes pipelined frame requests to the worker on a thread of its own, in order. The write blocks while the
+    worker is busy (the pipe holds 64 KiB, a frame's colliders can be megabytes), and on Blender's main thread
+    that froze the interface for as long as the worker took to read it."""
+
+    def __init__(self, bridge):
+        self.bridge = bridge
+        self.queue = queue.Queue()
+        self.error = None
+        self.thread = threading.Thread(target=self._run, daemon=True, name="FumarisLiquidSend")
+        self.thread.start()
+
+    def put(self, header, payload):
+        if self.error is not None:
+            raise RuntimeError(self.error)
+        self.queue.put((header, payload))
+
+    def _run(self):
+        while True:
+            item = self.queue.get()
+            try:
+                if item is None:
+                    return
+                if self.error is None:
+                    self.bridge.send_frame(*item)
+            except Exception as exc:
+                self.error = str(exc) or type(exc).__name__
+            finally:
+                self.queue.task_done()
+
+    def drain(self, timeout=30.0):
+        """Wait until every queued request has been written (before any other request to the worker)."""
+        deadline = time.monotonic() + timeout
+        with self.queue.all_tasks_done:
+            while self.queue.unfinished_tasks:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise RuntimeError("Liquid worker did not take its requests")
+                self.queue.all_tasks_done.wait(left)
+        if self.error is not None:
+            raise RuntimeError(self.error)
+
+    def stop(self):
+        self.queue.put(None)
 
 
 def cache_for(domain):
@@ -70,9 +119,10 @@ class Session:
         self.error = None
         self._cleanup_retry_at = 0
         self._last_cleanup_report = None
-        self.frame = domain.fumaris_liquid.bake_start if bake else scene.frame_current
+        start, end = frame_range(scene, domain)
+        self.frame = start if bake else scene.frame_current
         self.first_frame = self.frame
-        self.last_frame = domain.fumaris_liquid.bake_end if bake else None
+        self.last_frame = end if bake else None
         if bake and self.last_frame < self.frame:
             raise RuntimeError("Bake end must be at least the start frame")
         self.last_settings = self._settings()
@@ -82,11 +132,13 @@ class Session:
         self.pipelined = os.environ.get("FUMARIS_LIQUID_PIPELINE", "1") != "0"
         self.inflight = deque()  # (frame, preview only, sent at, export ms) of the requests sent, oldest first
         self._show_at = 0.0  # when the next held live frame may be shown (Preview Rate)
+        self._bake_shown_at = 0.0  # when a bake last showed a frame in the viewport
         if not domain.fumaris_liquid.emitter_collection:
             raise RuntimeError("Assign an emitter collection or use Quick Setup")
         # No acquired cache, task or child exists before module start publishes
         # this complete owner and its cleanup timer.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="FumarisLiquid")
+        self.sender = None  # _Sender, started with the first pipelined request
 
     def begin(self):
         if self.cache:
@@ -216,7 +268,9 @@ class Session:
         preview_only = header.pop("_preview_only", False)
         if update is not None:
             header["settings_update"] = update
-        self.bridge.send_frame(header, payload)
+        if self.sender is None:
+            self.sender = _Sender(self.bridge)
+        self.sender.put(header, payload)  # written on the sender's thread: the main thread does not wait for the worker
         self.inflight.append((header["frame"], preview_only, time.perf_counter(), self.export_ms))
         self.frame += 1
 
@@ -235,6 +289,12 @@ class Session:
 
     def _poll_pipelined(self):
         shown = None
+        if self.sender is not None and self.sender.error is not None and not self.stopping:
+            # A request could not be written: the worker is gone or broken (its response never comes).
+            if self.error is None:
+                self.error = self.sender.error
+            self.domain.fumaris_liquid.last_error = self.error
+            self.request_stop()
         if self.future is not None and not self.future.done():
             if self.phase == "STARTING" and self._prepared is None and not self.stopping:
                 try:
@@ -256,7 +316,14 @@ class Session:
                 elif self.phase == "FRAME":
                     self.inflight.popleft()
                     self.last_response = result[0]
-                    display.apply(self.scene, self.domain, *result)
+                    # A bake is in the cache frame by frame; the viewport shows it at most every BAKE_SHOW_SECONDS
+                    # (and its last frame), so that writing each frame's surface into Blender does not hold up the
+                    # interface while the solver runs ahead.
+                    now = time.monotonic()
+                    if (not self.bake or now - self._bake_shown_at >= BAKE_SHOW_SECONDS
+                            or result[0]["frame"] >= self.last_frame):
+                        display.apply(self.scene, self.domain, *result)
+                        self._bake_shown_at = now
                     shown = result[0]["frame"]
                     self._frame_shown(shown)
                     if self.bake and shown >= self.last_frame:
@@ -313,7 +380,7 @@ class Session:
                                  self.recording or self.domain.fumaris_liquid.display in {"SURFACE", "PREVIEW"}, work=True)
                 except Exception as exc:
                     self.domain.fumaris_liquid.runtime_warning = str(exc)
-            else:
+            elif self.domain.fumaris_liquid.status != "Paused — solver state retained":  # (a write, even unchanged, redraws)
                 self.domain.fumaris_liquid.status = "Paused — solver state retained"
             return True
         try:
@@ -391,6 +458,8 @@ class Session:
 
     def _snapshot(self, update, frame, surface):
         """The held frame again, meshed with the current surface settings; no time passes."""
+        if self.sender is not None:
+            self.sender.drain()
         if update is not None:
             self.bridge.request("update", {"settings": update})
         response, result = self.bridge.request("snapshot", {"surface": surface, "frame": frame,
@@ -420,6 +489,8 @@ class Session:
         if self.stopper is not None and self.stopper.ident is not None:
             self.stopper.join()
         self.bridge.close()
+        if self.sender is not None:
+            self.sender.stop()  # its last write, if any, failed with the worker gone
         self._verify_work_complete()
         self._release_cache()
 
@@ -531,7 +602,8 @@ class Session:
             except Exception as exc:
                 self.domain.fumaris_liquid.runtime_warning = str(exc)
         elif self.paused:
-            self.domain.fumaris_liquid.status = "Paused — solver state retained"
+            if self.domain.fumaris_liquid.status != "Paused — solver state retained":
+                self.domain.fumaris_liquid.status = "Paused — solver state retained"
         else:
             try:
                 self._request_frame()
@@ -548,6 +620,8 @@ class Session:
         self._cancel_pending()
         try:
             self.bridge.close()
+            if self.sender is not None:
+                self.sender.stop()
             self.executor.shutdown(wait=True, cancel_futures=True)
             self.bridge.close()
             self._verify_tasks_complete()

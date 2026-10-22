@@ -173,6 +173,8 @@ def create(context, preset="DAM_BREAK"):
     else:
         p.bounds_min = origin + Vector((-2.6, -1.6, -0.4))
         p.bounds_max = origin + Vector((2.6, 1.6, 3.4))
+    # A preset is a set length from the current frame, not the timeline (as Fumaris' presets with a duration).
+    p.use_scene_frame_range = False
     p.bake_start = scene.frame_current
     p.bake_end = scene.frame_current + 119
     p.mesh_cell_size = 0.035

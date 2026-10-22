@@ -58,7 +58,8 @@ points away from stays open, so liquid thrown upward comes back. Add collider me
 uses additional GPU memory; a failed allocation stops with an error.
 
 Particle radius sets the liquid sampling spacing (twice the radius). Smaller
-values produce more particles and more work. Surface cell size controls output
+values produce more particles and more work. Its slider spans 0.005 to 2 m;
+any value from 0.1 mm to 100 m can be typed in. Surface cell size controls output
 mesh detail independently. Radius, particle budgets, region and mesh sizing
 should be chosen before starting; their UI is disabled while running. Gravity,
 Substeps, Step Size, Collider Step, Simulation Speed and FLIP Ratio can be adjusted while playing.
@@ -305,7 +306,13 @@ needs Cycles **Light Paths > Volume** bounces above zero (8 or more) to render
 white rather than grey.
 
 Choose a cache directory and slot. Enable **Record Preview** before Play to save
-every completed displayed frame. **Bake** runs the chosen start/end frame range.
+every completed displayed frame. **Bake** runs the frame range in the Simulate
+block. With **Use Timeline** (the clock button, on for new domains) that is the
+scene's timeline, started **Warmup** frames before its first frame so the
+liquid has settled and is moving when the timeline begins. With it off, the
+bake runs its own Start to End; Quick Setup presets use 120 frames from the
+current frame this way. During a bake the viewport shows a frame about ten
+times a second; every frame is cached.
 A run requires an empty slot so old frames cannot contaminate a new simulation.
 Choose a new slot or use **Delete Slot** to remove the current domain's owned
 slot. A writer lock prevents simultaneous writes; a cancelled run retains only
@@ -398,7 +405,8 @@ compositor) the nearer cached frame is shown.
 The domain's panel (Properties > Physics, and the Aquaris tab of the 3D view's
 sidebar) starts with the **Simulate** block, which is always open: the status
 (with a bake's progress and time left, and afterwards how the last bake went),
-Play, Bake and Reset, Draft and Final, Particle Radius, the frame range, Record
+Play, Bake and Reset, Draft and Final, Particle Radius, the frame range (Use
+Timeline with Warmup, or Start and End), Record
 Preview and Preview Rate. Below it are Participant Collections, Liquid,
 Whitewater, Surface and Display, Cache and Export, Advanced (region, walls,
 budgets) and Diagnostics (the GPU, the last frame's timings, how full the

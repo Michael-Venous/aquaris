@@ -54,7 +54,7 @@ def limits(p):
 
 def mesh_cell(p):
     """Surface cell size: a multiple of the particle radius unless set by hand."""
-    return max(0.005, p.particle_radius * p.mesh_cell_factor) if p.mesh_cell_relative else p.mesh_cell_size
+    return max(0.0001, p.particle_radius * p.mesh_cell_factor) if p.mesh_cell_relative else p.mesh_cell_size
 
 
 def _over(p, what, advice):

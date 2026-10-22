@@ -153,9 +153,15 @@ def _transport(layout, context, domain, compact=False):
     fixed = settings.column()
     fixed.enabled = running is None
     fixed.prop(p, "particle_radius")
-    frames = fixed.column(align=True)
-    frames.prop(p, "bake_start", text="Frame Start")
-    frames.prop(p, "bake_end", text="End")
+    frames = fixed.row(align=True)
+    frames.use_property_split = False  # one row as in Fumaris: the clock, then Warmup or Start and End
+    frames.use_property_decorate = False
+    frames.prop(p, "use_scene_frame_range", text="", icon="TIME")
+    if p.use_scene_frame_range:
+        frames.prop(p, "warmup_frames")
+    else:
+        frames.prop(p, "bake_start", text="Start")
+        frames.prop(p, "bake_end", text="End")
     if running is not None:
         settings.label(text="Stop the simulation to change radius or range", icon="INFO")
     record = settings.row()

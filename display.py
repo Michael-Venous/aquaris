@@ -565,18 +565,22 @@ def apply(scene, domain, header, payload):
         # Seconds this whitewater particle has left (foam dissolves when it reaches 0), for fading it out.
         _attribute(p.whitewater_object.data, "whitewater_life", block(header, payload, "whitewater_life", 1), scalar=True)
     update_visibility(domain)
-    p.status = f"Frame {header.get('frame', scene.frame_current)} · {len(positions):,} liquid"
+    status = f"Frame {header.get('frame', scene.frame_current)} · {len(positions):,} liquid"
     if len(whitewater):
-        p.status += f" · {len(whitewater):,} whitewater"
+        status += f" · {len(whitewater):,} whitewater"
     if p.display == "PREVIEW":
-        p.status += " · GPU preview"
+        status += " · GPU preview"
     if "simulation_ms" in header:
-        p.status += f" · {header['simulation_ms']:.1f} ms sim"
+        status += f" · {header['simulation_ms']:.1f} ms sim"
     if header.get("emission_clipped", 0):
-        p.status += f" · {header['emission_clipped']:,} source samples excluded by solids"
-    p.runtime_warning = ""
-    if header.get("mesh_fallback"):
-        p.runtime_warning = "GPU mesher could not take this frame and Fast was used: " + str(header["mesh_fallback"])[:160]
+        status += f" · {header['emission_clipped']:,} source samples excluded by solids"
+    warning = ("GPU mesher could not take this frame and Fast was used: " + str(header["mesh_fallback"])[:160]
+               if header.get("mesh_fallback") else "")
+    # One write each, and none when unchanged: every property write makes Blender redraw.
+    if p.status != status:
+        p.status = status
+    if p.runtime_warning != warning:
+        p.runtime_warning = warning
 
 
 # Set while an export plays the cache through: the outputs being exported must stay visible (a hidden object is
@@ -594,14 +598,18 @@ def update_visibility(domain):
                         # Shares the whitewater points, so it is theirs to clear.
                         (p.mist_object, not p.whitewater or p.whitewater_mist <= 0 or p.display != "SURFACE")):
         if obj is not None:
+            # Written only when they change: every write, even of the same value, makes Blender redraw (and this
+            # runs for each frame shown).
             for scene in domain.users_scene:
                 for layer in scene.view_layers:
-                    if obj.name in layer.objects:
+                    if obj.name in layer.objects and obj.hide_get(view_layer=layer) != hidden:
                         obj.hide_set(hidden, view_layer=layer)
             # Viewport-only preview must not hide recorded surface output in a render.
-            obj.hide_render = (not p.whitewater or p.whitewater_mist <= 0 if obj == p.mist_object else
-                               not p.whitewater if obj == p.whitewater_object else
-                               p.display == "PARTICLES" if obj == p.surface_object else p.display != "PARTICLES")
+            render_hidden = (not p.whitewater or p.whitewater_mist <= 0 if obj == p.mist_object else
+                             not p.whitewater if obj == p.whitewater_object else
+                             p.display == "PARTICLES" if obj == p.surface_object else p.display != "PARTICLES")
+            if obj.hide_render != render_hidden:
+                obj.hide_render = render_hidden
 
 
 def refresh_mode(scene, domain):

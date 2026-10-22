@@ -26,6 +26,25 @@ def _viscosity_preset(self, context):
         self.viscosity = VISCOSITY_PRESETS[self.viscosity_preset]
 
 
+def _role_update(self, context):
+    # A new domain follows the timeline, so its range matches the scene without editing (as in Fumaris). A domain
+    # whose Start and End were already changed keeps its own range.
+    if (self.role == "DOMAIN" and not self.use_scene_frame_range
+            and self.bake_start == 1 and self.bake_end == 120):
+        self.use_scene_frame_range = True
+
+
+def frame_range(scene, domain):
+    """The frames a bake of this domain simulates: the scene's timeline, Warmup frames early (Use Timeline), or
+    its own Start and End."""
+    p = domain.fumaris_liquid
+    if p.use_scene_frame_range:
+        start, end = int(scene.frame_start) - max(0, int(p.warmup_frames)), int(scene.frame_end)
+    else:
+        start, end = int(p.bake_start), int(p.bake_end)
+    return start, max(start, end)
+
+
 def _look_update(self, context):
     if self.role == "DOMAIN":
         from . import display
@@ -40,7 +59,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("COLLIDER", "Collider", "A solid the liquid cannot enter: walls, floors, containers, moving objects"),
         ("OUTFLOW", "Outflow", "Deletes any liquid that enters this object's bounding box (a drain or a sink)"),
         ("EFFECTOR", "Effector", "A force field around this object that pushes the liquid: force, wind, vortex or turbulence"),
-    ], default="NONE")
+    ], default="NONE", update=_role_update)
     enabled: BoolProperty(name="Enabled", default=True,
                           description="Animate to enable or disable this participant")
     collider_margin: FloatProperty(name="Margin", default=0.0, min=0.0, soft_max=0.5, subtype="DISTANCE", unit="LENGTH",
@@ -92,7 +111,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                              "throwing up an intact crown), or when a fast collider presses liquid through a "
                                              "thin floor. Higher values are faster but coarser where colliders strike liquid. "
                                              "Can be changed while playing")
-    particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.005, max=2, subtype="DISTANCE",
+    particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.0001, max=100, soft_min=0.005, soft_max=2, subtype="DISTANCE",
                                    description="The simulation's resolution: the size of one liquid particle. Halving it shows finer "
                                                "detail but takes about eight times the particles and much longer. Takes effect when "
                                                "the simulation is started again")
@@ -156,7 +175,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
     mesh_cell_factor: FloatProperty(update=_surface_update, name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
                                     description="Surface detail, in particle radii: 1 shows every particle's worth of detail; larger "
                                                 "values mesh faster and look softer. Draft sets 1.5, Final sets 1")
-    mesh_cell_size: FloatProperty(update=_surface_update, name="Surface Cell Size", default=0.04, min=0.005, subtype="DISTANCE",
+    mesh_cell_size: FloatProperty(update=_surface_update, name="Surface Cell Size", default=0.04, min=0.0001, soft_min=0.005, subtype="DISTANCE",
                                   description="Surface detail as a distance: smaller is finer and slower to mesh")
     max_mesh_cells: IntProperty(update=_surface_update, name="Surface Cell Budget", default=2000000, min=1000, max=64000000,
                                 description="The most surface cells meshed per frame; very large or very fine surfaces need more")
@@ -198,6 +217,12 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                  description="Show the saved frame for the current timeline frame when you scrub or play the timeline")
     bake_start: IntProperty(name="Start", default=1, min=-100000, max=100000, description="First frame to bake")
     bake_end: IntProperty(name="End", default=120, min=-100000, max=100000, description="Last frame to bake")
+    use_scene_frame_range: BoolProperty(name="Use Timeline", default=False,
+                                        description="Bake the scene's timeline range, starting Warmup frames early, "
+                                                    "instead of a separate Start and End. On for new domains")
+    warmup_frames: IntProperty(name="Warmup", default=0, min=0, soft_max=100,
+                               description="Frames simulated before the timeline's start, so the liquid has already "
+                                           "settled and is moving on the first visible frame")
     display: EnumProperty(name="Display", items=[
         ("PREVIEW", "GPU Surface", "Draw the liquid surface straight from the graphics card: the fastest view, but it is not "
                                    "Blender geometry and does not render. Bake or switch to Surface for renderable liquid"),

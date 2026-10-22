@@ -144,7 +144,7 @@ def request(scene, domain, header, payload):
     settings = {'particle_radius': header.get('particle_radius', p.particle_radius),
                 # As exporters.mesh_cell/limits; kept local so this module needs no scene exporter.
                 # Relative to the radius these particles were simulated at, not the one now in the panel.
-                'mesh_cell_size': (max(0.005, header.get('particle_radius', p.particle_radius) * getattr(p, 'mesh_cell_factor', 1.0))
+                'mesh_cell_size': (max(0.0001, header.get('particle_radius', p.particle_radius) * getattr(p, 'mesh_cell_factor', 1.0))
                                    if getattr(p, 'mesh_cell_relative', False) else p.mesh_cell_size),
                 'max_mesh_cells': 64_000_000 if getattr(p, 'auto_budgets', False) else p.max_mesh_cells,
                 'mesh_quality': getattr(p, 'mesh_quality', 'FAST'),
