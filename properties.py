@@ -34,17 +34,6 @@ def _role_update(self, context):
         self.use_scene_frame_range = True
 
 
-def frame_range(scene, domain):
-    """The frames a bake of this domain simulates: the scene's timeline, Warmup frames early (Use Timeline), or
-    its own Start and End."""
-    p = domain.fumaris_liquid
-    if p.use_scene_frame_range:
-        start, end = int(scene.frame_start) - max(0, int(p.warmup_frames)), int(scene.frame_end)
-    else:
-        start, end = int(p.bake_start), int(p.bake_end)
-    return start, max(start, end)
-
-
 def _look_update(self, context):
     if self.role == "DOMAIN":
         from . import display

@@ -14,7 +14,6 @@ from bpy.app.handlers import persistent
 from . import display, exporters
 from .bridge import Bridge
 from .cache import Cache
-from .properties import frame_range
 from ._tasks import result_owned, submit_owned
 
 _active = None
@@ -40,6 +39,17 @@ def _progress(step, *args):
         getattr(manager, "progress_" + step)(*args)
     except Exception:
         pass
+
+
+def frame_range(scene, domain):
+    """The frames a bake of this domain simulates: the scene's timeline, Warmup frames early (Use Timeline), or
+    its own Start and End."""
+    p = domain.fumaris_liquid
+    if getattr(p, "use_scene_frame_range", False):
+        start, end = int(scene.frame_start) - max(0, int(getattr(p, "warmup_frames", 0))), int(scene.frame_end)
+    else:
+        start, end = int(p.bake_start), int(p.bake_end)
+    return start, max(start, end)
 
 
 class _Sender:
