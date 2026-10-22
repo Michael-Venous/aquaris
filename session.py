@@ -13,7 +13,7 @@ from bpy.app.handlers import persistent
 
 from . import display, exporters
 from .bridge import Bridge
-from .cache import Cache
+from .cache import PARTICLE_BLOCKS, Cache
 from ._tasks import result_owned, submit_owned
 
 _active = None
@@ -102,7 +102,10 @@ def cache_for(domain):
     p = domain.fumaris_liquid
     identity = display.ensure_identity(domain)
     directory = bpy.path.abspath(p.cache_directory)
-    return Cache(directory, identity, p.cache_slot)
+    cache = Cache(directory, identity, p.cache_slot)
+    cache.compress = bool(getattr(p, "compress_cache", False))
+    cache.drop = frozenset() if getattr(p, "cache_particles", True) else PARTICLE_BLOCKS
+    return cache
 
 
 class Session:

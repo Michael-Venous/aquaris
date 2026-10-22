@@ -313,6 +313,13 @@ liquid has settled and is moving when the timeline begins. With it off, the
 bake runs its own Start to End; Quick Setup presets use 120 frames from the
 current frame this way. During a bake the viewport shows a frame about ten
 times a second; every frame is cached.
+**Compress Cache** (on by default) writes frames compressed, about half the
+disk space (a 115 MB beach frame becomes 59 MB) for a few tens of milliseconds
+to write and read each frame; caches written either way, or by earlier
+versions, are read. **Cache Particles** (on by default) keeps the liquid's
+particles in each frame. They are needed for the Particles display, Rebuild
+Surface and particle or volume export; turned off, a bake that only renders the
+surface and whitewater takes about 40 % less space.
 A run requires an empty slot so old frames cannot contaminate a new simulation.
 Choose a new slot or use **Delete Slot** to remove the current domain's owned
 slot. A writer lock prevents simultaneous writes; a cancelled run retains only

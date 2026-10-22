@@ -63,6 +63,8 @@ class Rebuild:
         """Rebuild the next frame; returns True when every frame is done."""
         frame = self.frames[self.done]
         header, payload = self.cache.read(frame)
+        if header.get("particles_dropped"):
+            raise RuntimeError(f"Frame {frame} was baked with Cache Particles off: its surface cannot be rebuilt")
         stored = _blocks(header, payload)
         sent = {"positions": stored.get("positions", b"")}
         if self.velocities and "velocities" in stored and len(stored["velocities"]) == len(sent["positions"]):

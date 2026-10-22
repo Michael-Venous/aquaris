@@ -10,13 +10,65 @@ import sys
 import tempfile
 import uuid
 
-from .protocol import read_message, write_message
+from .protocol import UINT3_FIELDS, VEC3_FIELDS, read_message, validate_blocks, write_message
 
 SCHEMA = 1
 MARKER = "fumaris-liquid-cache.json"
 PROTECT = ".aquaris_protected"  # a slot holding this file is not deleted or written (Protect, in the cache panel)
 _SAFE_SLOT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 LOCK = ".writer.lock"
+# Compressed frames (Compress Cache): the payload's 4-byte values byte-shuffled (every value's first byte, then
+# every second byte, ...: neighbouring floats share their high bytes, so the shuffled bytes compress) and zstd
+# level 1 in chunks, on four threads. A beach frame of 115 MiB became 59 MiB in about 35 ms; reading it back costs
+# about as much. Frames without "payload_codec" are read as they are (caches written before 0.3.26).
+CODEC = "zstd-shuffle4"
+_CHUNK = 16 << 20
+_coder = None
+
+
+def _pool():
+    global _coder
+    if _coder is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _coder = ThreadPoolExecutor(max_workers=4, thread_name_prefix="AquarisCacheCodec")
+    return _coder
+
+
+def compress_payload(payload):
+    """(codec description, compressed bytes) for a payload, or (None, payload) when zstd is not available."""
+    try:
+        from compression import zstd
+    except ImportError:
+        return None, payload
+    import numpy as np
+    data = np.frombuffer(payload, np.uint8)
+    whole = len(data) // 4 * 4
+    shuffled = np.empty(len(data), np.uint8)
+    shuffled[:whole] = data[:whole].reshape(-1, 4).T.ravel()
+    shuffled[whole:] = data[whole:]
+    view = memoryview(shuffled)
+    chunks = list(_pool().map(lambda start: zstd.compress(view[start:start + _CHUNK], 1), range(0, len(view), _CHUNK)))
+    return {"name": CODEC, "size": len(data), "chunks": [len(c) for c in chunks]}, b"".join(chunks)
+
+
+def decompress_payload(codec, blob):
+    if not isinstance(codec, dict) or codec.get("name") != CODEC:
+        raise RuntimeError("Liquid cache frame uses an unknown compression; update Aquaris")
+    from compression import zstd
+    import numpy as np
+    size, lengths = int(codec["size"]), [int(n) for n in codec["chunks"]]
+    if sum(lengths) != len(blob):
+        raise RuntimeError("Liquid cache frame is corrupt (compressed size)")
+    view, starts = memoryview(blob), np.cumsum([0] + lengths)
+    parts = list(_pool().map(lambda k: zstd.decompress(view[starts[k]:starts[k + 1]]), range(len(lengths))))
+    shuffled = np.frombuffer(b"".join(parts), np.uint8)
+    if len(shuffled) != size:
+        raise RuntimeError("Liquid cache frame is corrupt (decompressed size)")
+    whole = size // 4 * 4
+    data = np.empty(size, np.uint8)
+    data[:whole] = shuffled[:whole].reshape(4, -1).T.ravel()
+    data[whole:] = shuffled[whole:]
+    return data.tobytes()
 
 
 def _read_text(path):
@@ -139,7 +191,29 @@ def _owner_gone(data):
     return isinstance(start, str) and bool(start) and bool(current_start) and start != current_start
 
 
+# The liquid's particles in a frame: left out with Cache Particles off (the surface and whitewater stay).
+PARTICLE_BLOCKS = frozenset({"positions", "velocities", "ids", "ages"})
+
+
+def _without(header, payload, drop):
+    """The frame with the blocks in `drop` left out (the others packed again in their order)."""
+    blocks = header.get("blocks", {})
+    if not any(name in blocks for name in drop):
+        return header, payload
+    kept, out, view = {}, bytearray(), memoryview(payload)
+    for name, block in sorted(blocks.items(), key=lambda item: item[1]["offset"]):
+        if name in drop:
+            continue
+        size = block["count"] * (12 if name in VEC3_FIELDS or name in UINT3_FIELDS else 4)
+        kept[name] = {"offset": len(out), "count": block["count"]}
+        out += view[block["offset"]:block["offset"] + size]
+    return dict(header, blocks=kept, particles_dropped=True), bytes(out)
+
+
 class Cache:
+    compress = False  # Compress Cache (set by session.cache_for)
+    drop = frozenset()  # blocks left out of written frames (Cache Particles off)
+
     def __init__(self, directory, domain_id, slot):
         try:
             self.domain_id = str(uuid.UUID(domain_id))
@@ -343,6 +417,13 @@ class Cache:
         try:
             with os.fdopen(fd, "wb") as stream:
                 saved_header = dict(header, frame=frame, cache_schema=SCHEMA)
+                saved_header.pop("payload_codec", None)
+                if self.drop:
+                    saved_header, payload = _without(saved_header, payload, self.drop)
+                if self.compress:
+                    codec, payload = compress_payload(payload)
+                    if codec is not None:
+                        saved_header["payload_codec"] = codec
                 write_message(stream, saved_header, payload)
                 os.fsync(stream.fileno())
             os.replace(temp, target)
@@ -361,7 +442,11 @@ class Cache:
             header, payload = read_message(stream)
             if stream.read(1) or header.get("frame") != frame or header.get("cache_schema") != SCHEMA:
                 raise RuntimeError("Liquid cache frame is corrupt or incompatible")
-            return header, payload
+        codec = header.pop("payload_codec", None)
+        if codec is not None:
+            payload = decompress_payload(codec, payload)
+            validate_blocks(header, payload)
+        return header, payload
 
     def frames(self):
         if not self.path.exists():

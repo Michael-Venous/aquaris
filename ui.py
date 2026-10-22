@@ -304,6 +304,9 @@ def _draw(layout, context):
             editable.label(text=f"Slot '{p.cache_slot}': {summary}" + (" · protected" if protected else ""),
                            icon="LOCKED" if protected else "DISK_DRIVE")
             editable.prop(p, "cache_playback")
+            options = editable.row(align=True)
+            options.prop(p, "compress_cache", toggle=True)
+            options.prop(p, "cache_particles", toggle=True)
             row = editable.row(align=True)
             row.operator("fumaris_liquid.cache", text="Load Frame", icon="IMPORT").action = "LOAD"
             delete = row.row(align=True)

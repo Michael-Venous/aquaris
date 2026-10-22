@@ -210,6 +210,13 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                            "versions and switch between them")
     cache_playback: BoolProperty(name="Timeline Cache Playback", default=True,
                                  description="Show the saved frame for the current timeline frame when you scrub or play the timeline")
+    compress_cache: BoolProperty(name="Compress Cache", default=True,
+                                 description="Write baked frames compressed: about half the disk space, for a little time to "
+                                             "write and read each frame. Caches either way can be read")
+    cache_particles: BoolProperty(name="Cache Particles", default=True,
+                                  description="Keep the liquid's particles in the baked frames. Needed for the Particles display, "
+                                              "Rebuild Surface and particle or volume export; off, a bake that only renders the "
+                                              "surface takes about 40 % less space")
     bake_start: IntProperty(name="Start", default=1, min=-100000, max=100000, description="First frame to bake",
                             update=_range_update)
     bake_end: IntProperty(name="End", default=120, min=-100000, max=100000, description="Last frame to bake",
