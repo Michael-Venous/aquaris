@@ -363,7 +363,8 @@ class SceneExporter:
             mesh.vertices.foreach_get("co", local.ravel())
             matrix = np.asarray(matrix if matrix is not None else evaluated.matrix_world, dtype=np.float64)
             world = local @ matrix[:3, :3].T + matrix[:3, 3]
-            triangles = np.asarray([tuple(t.vertices) for t in mesh.loop_triangles], dtype=np.int32).reshape((-1, 3))
+            triangles = np.empty((len(mesh.loop_triangles), 3), dtype=np.int32)
+            mesh.loop_triangles.foreach_get("vertices", triangles.ravel())  # a Python loop took 7 ms a 100k triangles
             return world, triangles, matrix, _attribute(mesh, props.mask_attribute), _attribute(mesh, props.velocity_attribute, True)
         finally:
             if mesh is not None:

@@ -443,6 +443,16 @@ liquid moves in real time and the graphics card rests between frames; **As Fast
 As Possible** shows each frame as soon as it is simulated. Bakes always run at
 full speed.
 
+**Simulation GPU** (Preferences > Add-ons > Aquaris) chooses the graphics card
+the liquid runs on. **Auto** (default) uses a card Blender is not drawing on
+when the computer has another of the same kind, since sharing one with
+Blender's drawing can halve a live preview's rate (a honey pour played at 20
+frames a second on one card and 44 with Blender drawing on the other). With a
+single graphics card it uses that one. **Blender's GPU** and **Named** (part of
+a card's name, such as 4060, or its number) choose it yourself. The change
+takes effect the next time a simulation starts, and Diagnostics shows the card
+in use. The environment variable `FUMARIS_LIQUID_GPU` overrides all of these.
+
 Use **Surface and Display > Display > GPU Surface** for fast iteration. It is
 the default for new domains; existing saved display selections remain compatible.
 It draws the meshed surface itself: the triangles the GPU mesher builds each

@@ -4,7 +4,7 @@ selected one, else the only domain in the scene. Shortcuts: Shift+Alt+L play / p
 editable in the add-on's preferences.
 """
 import bpy
-from bpy.props import PointerProperty
+from bpy.props import EnumProperty, PointerProperty, StringProperty
 
 from . import operators, session
 
@@ -154,7 +154,22 @@ def draw_keymaps(layout, context):
 class LIQUID_preferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
+    simulation_gpu: EnumProperty(
+        name="Simulation GPU", default="AUTO",
+        items=(("AUTO", "Auto", "A GPU Blender is not drawing on when the computer has another of the same kind; "
+                "otherwise Blender's. Sharing a GPU with Blender's drawing slows live previews"),
+               ("BLENDER", "Blender's GPU", "The GPU Blender draws on"),
+               ("NAMED", "Named", "The GPU whose name contains Name, or whose number is Name (0 is the first)")),
+        description="GPU the liquid simulates on. Takes effect when the simulation next starts")
+    simulation_gpu_name: StringProperty(
+        name="Name", default="",
+        description="Part of the GPU's name, such as 4060, or its number. The GPU in use is shown in the Domain's Diagnostics")
+
     def draw(self, context):
+        row = self.layout.row()
+        row.prop(self, "simulation_gpu")
+        if self.simulation_gpu == "NAMED":
+            row.prop(self, "simulation_gpu_name")
         draw_keymaps(self.layout.box(), context)
 
 

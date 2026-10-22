@@ -27,6 +27,35 @@ class _WriteAttempt:
         return self.stream.flush()
 
 
+def gpu_choice(mode, name, renderer):
+    """Environment for the worker's GPU: `mode` AUTO, BLENDER or NAMED, `renderer` the GPU Blender draws on."""
+    if mode == "NAMED":
+        return {"FUMARIS_LIQUID_GPU": name.strip()} if name and name.strip() else {}
+    renderer = (renderer or "").split("/")[0].strip()  # OpenGL appends "/PCIe/SSE2"
+    if not renderer:
+        return {}
+    return {"FUMARIS_LIQUID_GPU": renderer} if mode == "BLENDER" else {"FUMARIS_LIQUID_GPU_AVOID": renderer}
+
+
+def gpu_environment():
+    """The worker's GPU from the add-on preferences. Called on Blender's main thread (where a Bridge is made).
+    Auto keeps the simulation off the GPU Blender draws on when there is another GPU of the same kind: sharing it
+    with Blender's drawing halved a live preview's rate (2026-10-22, honey pour: 20 fps on one RTX 4060 Ti,
+    44 fps with Blender drawing on the other card). Variables already in the environment win."""
+    try:
+        import bpy
+        import gpu
+    except ImportError:
+        return {}
+    addon = bpy.context.preferences.addons.get(__package__)
+    preferences = addon.preferences if addon else None
+    try:
+        renderer = gpu.platform.renderer_get()
+    except Exception:  # no GPU context (background Blender without one)
+        renderer = ""
+    return gpu_choice(getattr(preferences, "simulation_gpu", "AUTO"), getattr(preferences, "simulation_gpu_name", ""), renderer)
+
+
 def find_worker():
     suffix = ".exe" if os.name == "nt" else ""
     addon = Path(__file__).resolve().parent
@@ -138,10 +167,14 @@ class Bridge:
         self._reader_started = False
         self._cleanup_errors = deque(maxlen=32)
         self._cleanup_unverified = False
+        self.gpu_environment = gpu_environment()
 
     def launch(self):
         executable = (self.executable or find_worker()).resolve()
         environment = os.environ.copy()
+        if not environment.get("FUMARIS_LIQUID_GPU"):
+            for key, value in self.gpu_environment.items():
+                environment.setdefault(key, value)
         if "FUMARIS_LIQUID_SHADER_CACHE" not in environment:
             cache = _shader_cache_directory()
             if cache is not None:
