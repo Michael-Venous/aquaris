@@ -459,15 +459,30 @@ liquid moves in real time and the graphics card rests between frames; **As Fast
 As Possible** shows each frame as soon as it is simulated. Bakes always run at
 full speed.
 
-**Simulation GPU** (Preferences > Add-ons > Aquaris) chooses the graphics card
-the liquid runs on. **Auto** (default) uses a card Blender is not drawing on
-when the computer has another of the same kind, since sharing one with
-Blender's drawing can halve a live preview's rate (a honey pour played at 20
-frames a second on one card and 44 with Blender drawing on the other). With a
-single graphics card it uses that one. **Blender's GPU** and **Named** (part of
-a card's name, such as 4060, or its number) choose it yourself. The change
-takes effect the next time a simulation starts, and Diagnostics shows the card
-in use. The environment variable `FUMARIS_LIQUID_GPU` overrides all of these.
+**Simulation GPU**, in the domain's Play/Bake controls and in Preferences > Add-ons >
+Aquaris, chooses the card for the next preview or bake. This is an add-on-wide
+preference, shared by domains. Stop the current simulation before changing it.
+
+Choose **Choose GPU**, click the refresh icon, then select a card from **Device**.
+The list shows detected hardware Vulkan compute devices, with a short unique ID
+to distinguish identical models. The choice is saved by the full device UUID in
+Blender's preferences, so enumeration order changes cannot select another card.
+Use Blender's usual preference saving/Auto-Save Preferences to retain it across
+restarts. Refresh only discovers devices; it does not run the solver. If a saved
+card is disconnected, the choice stays visible and starting reports an error;
+choose another card or switch to Auto. It never silently starts on another card.
+
+**Auto** (default) prefers a card Blender is not drawing on when there is another
+of the same kind; with one card it uses that one. **Blender's GPU** selects the
+drawing card. **Named** retains the previous manual name-substring/index override
+for scripts and older preferences. Diagnostics reports the actual solver GPU and
+full device UUID. The selected UUID also routes GPU surface meshing to that card;
+the existing CPU surface fallback still applies when GPU meshing cannot be used.
+
+An explicit `FUMARIS_LIQUID_GPU` environment override takes precedence over the
+preference (the panel shows when it is active). It accepts `uuid:<Vulkan device
+UUID>` as well as the previous name substring or enumeration index. This choice
+does not change Blender's drawing or Cycles render device.
 
 Use **Surface and Display > Display > GPU Surface** for fast iteration. It is
 the default for new domains; existing saved display selections remain compatible.

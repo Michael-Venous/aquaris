@@ -325,7 +325,7 @@ class Session:
                 result = result_owned(self.future)
                 if self.phase == "STARTING":
                     self.domain.fumaris_liquid.runtime_info = json.dumps(
-                        {key: result.get(key) for key in ("device", "backend", "protocol")}, ensure_ascii=False)
+                        {key: result.get(key) for key in ("device", "device_uuid", "backend", "protocol")}, ensure_ascii=False)
                 elif self.phase == "FRAME":
                     self.inflight.popleft()
                     self.last_response = result[0]
@@ -538,7 +538,7 @@ class Session:
                 result = result_owned(self.future)
                 if self.phase == "STARTING":
                     self.domain.fumaris_liquid.runtime_info = json.dumps(
-                        {key: result.get(key) for key in ("device", "backend", "protocol")}, ensure_ascii=False)
+                        {key: result.get(key) for key in ("device", "device_uuid", "backend", "protocol")}, ensure_ascii=False)
                 elif self.phase == "FRAME":
                     self.last_response = result[0]
                     if self.bake and self.frame >= self.last_frame:

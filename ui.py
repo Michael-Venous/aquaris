@@ -155,6 +155,8 @@ def _transport(layout, context, domain, compact=False):
             _control(row, "Reset", "RESET", "FILE_REFRESH")
     if compact:
         return
+    from .playback import draw_gpu_selection
+    draw_gpu_selection(box, context)
     quality = box.row(align=True)
     quality.enabled = running is None
     current = {name: getattr(p, name) for name in operators.QUALITY_LEVELS["DRAFT"]}
@@ -193,6 +195,8 @@ def _diagnostics(layout, context, domain):
         info = {}
     column = layout.column(align=True)
     column.label(text="GPU: " + (info.get("device") or "not started yet"), icon="MEMORY")
+    if info.get("device_uuid"):
+        column.label(text="GPU ID: " + info["device_uuid"])
     response = running.last_response if running is not None and running.domain == domain else None
     if response:
         parts = []

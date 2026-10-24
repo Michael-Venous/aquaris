@@ -6,7 +6,7 @@ editable in the add-on's preferences.
 import bpy
 from bpy.props import EnumProperty, PointerProperty, StringProperty
 
-from . import operators, session
+from . import operators, session, devices
 
 _KEYMAPS = []
 
@@ -151,27 +151,75 @@ def draw_keymaps(layout, context):
             rna_keymap_ui.draw_kmi([], config, keymap, item, layout, 0)
 
 
+class LIQUID_OT_refresh_gpus(bpy.types.Operator):
+    bl_idname = "fumaris_liquid.refresh_gpus"
+    bl_label = "Refresh GPUs"
+    bl_description = "List available simulation GPUs without starting the solver"
+
+    def execute(self, context):
+        from .bridge import find_worker
+        try:
+            found = devices.refresh(find_worker())
+        except RuntimeError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Found {len(found)} simulation GPU(s)")
+        return {"FINISHED"}
+
+
+def draw_gpu_selection(layout, context, preferences=None):
+    import os
+    addon = context.preferences.addons.get(__package__)
+    preferences = preferences or (addon.preferences if addon else None)
+    if preferences is None:
+        return
+    column = layout.column(align=True)
+    column.enabled = session.active() is None
+    column.prop(preferences, "simulation_gpu")
+    if preferences.simulation_gpu == "DEVICE":
+        row = column.row(align=True)
+        row.prop(preferences, "simulation_gpu_device", text="Device")
+        row.operator("fumaris_liquid.refresh_gpus", text="", icon="FILE_REFRESH")
+        if devices._error:
+            column.label(text=devices._error, icon="ERROR")
+        elif devices._loaded and not devices._devices:
+            column.label(text="No supported hardware GPUs found", icon="ERROR")
+        elif (devices._loaded and preferences.simulation_gpu_uuid and
+              not any(d["uuid"] == preferences.simulation_gpu_uuid for d in devices._devices)):
+            column.label(text="Selected GPU unavailable; choose another or Auto", icon="ERROR")
+    elif preferences.simulation_gpu == "NAMED":
+        column.prop(preferences, "simulation_gpu_name")
+    if os.environ.get("FUMARIS_LIQUID_GPU"):
+        column.label(text="Environment GPU override active", icon="INFO")
+    if session.active() is not None:
+        layout.label(text="Stop the simulation to change GPU", icon="INFO")
+
+
 class LIQUID_preferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
     simulation_gpu: EnumProperty(
         name="Simulation GPU", default="AUTO",
         items=(("AUTO", "Auto", "A GPU Blender is not drawing on when the computer has another of the same kind; "
-                "otherwise Blender's. Sharing a GPU with Blender's drawing slows live previews"),
-               ("BLENDER", "Blender's GPU", "The GPU Blender draws on"),
-               ("NAMED", "Named", "The GPU whose name contains Name, or whose number is Name (0 is the first)")),
+                "otherwise Blender's. Sharing a GPU with Blender's drawing slows live previews", 0),
+               ("DEVICE", "Choose GPU", "Select a detected graphics card, saved by its unique device identity", 3),
+               ("BLENDER", "Blender's GPU", "The GPU Blender draws on", 1),
+               ("NAMED", "Named", "The GPU whose name contains Name, or whose number is Name (0 is the first)", 2)),
         description="GPU the liquid simulates on. Takes effect when the simulation next starts")
     simulation_gpu_name: StringProperty(
         name="Name", default="",
         description="Part of the GPU's name, such as 4060, or its number. The GPU in use is shown in the Domain's Diagnostics")
 
+    simulation_gpu_uuid: StringProperty(name="Simulation GPU UUID", default="", options={"HIDDEN"})
+    simulation_gpu_label: StringProperty(name="Saved GPU Name", default="", options={"HIDDEN"})
+    simulation_gpu_device: EnumProperty(
+        name="Device", items=devices.items, get=devices.get_selection, set=devices.set_selection, options={"SKIP_SAVE"},
+        description="GPU for the next preview, bake and GPU surface mesh; saved by UUID")
+
     def draw(self, context):
         from . import bl_info, bridge
         layout = self.layout
-        row = layout.row()
-        row.prop(self, "simulation_gpu")
-        if self.simulation_gpu == "NAMED":
-            row.prop(self, "simulation_gpu_name")
+        draw_gpu_selection(layout, context, self)
         draw_keymaps(layout.box(), context)
         problem = bridge.worker_problem(bl_info["version"])
         status = layout.column(align=True)
@@ -184,7 +232,7 @@ def _domain_poll(scene, obj):
     return is_domain(obj) and obj.name in scene.objects
 
 
-classes = (LIQUID_OT_playback_toggle, LIQUID_OT_playback_stop, LIQUID_PT_playback, LIQUID_preferences)
+classes = (LIQUID_OT_playback_toggle, LIQUID_OT_playback_stop, LIQUID_PT_playback, LIQUID_OT_refresh_gpus, LIQUID_preferences)
 
 
 def register():

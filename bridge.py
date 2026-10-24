@@ -29,8 +29,12 @@ class _WriteAttempt:
         return self.stream.flush()
 
 
-def gpu_choice(mode, name, renderer):
-    """Environment for the worker's GPU: `mode` AUTO, BLENDER or NAMED, `renderer` the GPU Blender draws on."""
+def gpu_choice(mode, name, renderer, uuid=""):
+    """Environment for the worker's GPU: `mode` AUTO, DEVICE, BLENDER or NAMED, `renderer` the GPU Blender draws on."""
+    if mode == "DEVICE":
+        if not uuid:
+            raise RuntimeError("Choose a Simulation Device in Aquaris, or switch Simulation GPU to Auto")
+        return {"FUMARIS_LIQUID_GPU": "uuid:" + uuid}
     if mode == "NAMED":
         return {"FUMARIS_LIQUID_GPU": name.strip()} if name and name.strip() else {}
     renderer = (renderer or "").split("/")[0].strip()  # OpenGL appends "/PCIe/SSE2"
@@ -55,7 +59,12 @@ def gpu_environment():
         renderer = gpu.platform.renderer_get()
     except Exception:  # no GPU context (background Blender without one)
         renderer = ""
-    return gpu_choice(getattr(preferences, "simulation_gpu", "AUTO"), getattr(preferences, "simulation_gpu_name", ""), renderer)
+    # An explicit environment override wins even if the saved selection is missing/empty.
+    if os.environ.get("FUMARIS_LIQUID_GPU"):
+        return {}
+    return gpu_choice(getattr(preferences, "simulation_gpu", "AUTO"),
+                      getattr(preferences, "simulation_gpu_name", ""), renderer,
+                      getattr(preferences, "simulation_gpu_uuid", ""))
 
 
 def find_worker():
