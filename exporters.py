@@ -36,6 +36,11 @@ def participants(scene, domain):
 # Four million particles is what the surface path can follow: a one-radius
 # cell needs 9-14 surface nodes per particle against the 64 million cell cap.
 PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT = 4_000_000, 4_000_000, 64_000_000
+# Emitters are sampled on their bounding-box lattice before the inside test. That lattice only costs temporary
+# memory (about 100 bytes a point), so it has its own limit; the particles actually emitted are what PARTICLE_LIMIT
+# (or Max Particles) bounds. Until 2026-10-24 the lattice was held to the particle limit: a sloping sea emitter
+# whose box held 4.4 M lattice points but whose water was 2.15 M particles was refused.
+SAMPLING_LIMIT = 16_000_000
 # Extent of the slabs that remove escaped liquid [m].
 STRAY_REACH = 1.0e4
 
@@ -385,7 +390,11 @@ class SceneExporter:
 
     def _budget(self, count):
         if count > limits(self.domain.fumaris_liquid)[0]:
-            raise RuntimeError(_over(self.domain.fumaris_liquid, "Emitter sampling", "increase the particle radius"))
+            raise RuntimeError(_over(self.domain.fumaris_liquid, "Emitted liquid", "increase the particle radius"))
+
+    def _sampling_budget(self, points):
+        if points > SAMPLING_LIMIT:
+            raise RuntimeError("Emitter sampling grid exceeds what one emitter can sample; increase the particle radius or split the emitter")
 
     def _volume(self, obj, props, geometry, spacing, history_key=None, sample_time=None):
         motion_geometry = geometry
@@ -408,7 +417,7 @@ class SceneExporter:
         minimum = world.min(axis=0)
         maximum = world.max(axis=0)
         dims = np.maximum(1, np.ceil((maximum - minimum) / spacing).astype(int))
-        self._budget(int(np.prod(dims)))
+        self._sampling_budget(int(np.prod(dims)))
         bvh = None
         if props.source_shape in {"MESH", "COLLECTION", "VOLUME", "INSTANCES"}:
             if len(triangles) == 0:
