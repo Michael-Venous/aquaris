@@ -36,6 +36,17 @@ def domain_for(context):
     return matches[0] if len(matches) == 1 else None
 
 
+def idle_domain_poll(cls, context):
+    """Poll shared by the cache and export operators: a domain to act on, and no running simulation."""
+    if domain_for(context) is None:
+        cls.poll_message_set("Select an Aquaris domain, its output or one of its participants")
+        return False
+    if session.active() is not None:
+        cls.poll_message_set("Stop the running simulation first")
+        return False
+    return True
+
+
 class LIQUID_OT_setup(bpy.types.Operator):
     bl_idname = "fumaris_liquid.quick_setup"
     bl_label = "Quick Setup"
@@ -52,7 +63,10 @@ class LIQUID_OT_setup(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return session.active() is None
+        if session.active() is not None:
+            cls.poll_message_set("Stop the running simulation before adding a setup")
+            return False
+        return True
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self, width=360)
@@ -62,7 +76,7 @@ class LIQUID_OT_setup(bpy.types.Operator):
 
     def execute(self, context):
         if session.active() is not None:
-            self.report({"ERROR"}, "Stop the current liquid simulation before adding a setup")
+            self.report({"ERROR"}, "Stop the running Aquaris simulation before adding a setup")
             return {"CANCELLED"}
         domain = quick_setup.create(context, self.preset)
         context.scene.fumaris_liquid_domain = domain
@@ -74,7 +88,7 @@ class LIQUID_OT_setup(bpy.types.Operator):
 
 class LIQUID_OT_control(bpy.types.Operator):
     bl_idname = "fumaris_liquid.control"
-    bl_label = "Liquid Simulation"
+    bl_label = "Aquaris Simulation"
     action: EnumProperty(items=[(value, value.title(), "") for value in
                                 ("PLAY", "PAUSE", "RESUME", "STOP", "BAKE", "CANCEL", "RESET")])
     replace: bpy.props.BoolProperty(options={"SKIP_SAVE", "HIDDEN"},
@@ -90,7 +104,10 @@ class LIQUID_OT_control(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return domain_for(context) is not None
+        if domain_for(context) is None:
+            cls.poll_message_set("Select an Aquaris domain, its output or one of its participants")
+            return False
+        return True
 
     def invoke(self, context, event):
         domain = domain_for(context)
@@ -152,13 +169,13 @@ class LIQUID_OT_control(bpy.types.Operator):
 
 class LIQUID_OT_cache(bpy.types.Operator):
     bl_idname = "fumaris_liquid.cache"
-    bl_label = "Liquid Cache"
+    bl_label = "Aquaris Cache"
     action: EnumProperty(items=[("LOAD", "Load Current Frame", "Load the selected slot's current frame"),
                                 ("DELETE", "Delete Cache Slot", "Delete only this domain's owned cache slot")])
 
     @classmethod
     def poll(cls, context):
-        return domain_for(context) is not None and session.active() is None
+        return idle_domain_poll(cls, context)
 
     def invoke(self, context, event):
         if self.action == "DELETE":
@@ -202,7 +219,7 @@ class LIQUID_OT_cache_slot_new(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return domain_for(context) is not None and session.active() is None
+        return idle_domain_poll(cls, context)
 
     def execute(self, context):
         domain = domain_for(context)
@@ -224,7 +241,7 @@ class LIQUID_OT_cache_protect(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return domain_for(context) is not None and session.active() is None
+        return idle_domain_poll(cls, context)
 
     def execute(self, context):
         domain = domain_for(context)
@@ -245,7 +262,7 @@ class LIQUID_OT_rebuild_surface(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return domain_for(context) is not None and session.active() is None
+        return idle_domain_poll(cls, context)
 
     def invoke(self, context, event):
         from . import remesh
@@ -319,7 +336,7 @@ class LIQUID_OT_export_vdb(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return domain_for(context) is not None and session.active() is None
+        return idle_domain_poll(cls, context)
 
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
@@ -356,7 +373,7 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return domain_for(context) is not None and session.active() is None
+        return idle_domain_poll(cls, context)
 
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
@@ -434,7 +451,7 @@ QUALITY_LEVELS = {
 
 class LIQUID_OT_quality(bpy.types.Operator):
     bl_idname = "fumaris_liquid.quality"
-    bl_label = "Set Liquid Quality"
+    bl_label = "Set Aquaris Quality"
     bl_description = ("Switch several settings between fast previewing and final quality at once. Draft: coarser "
                       "surface detail and large solver steps. Final: full surface detail and small, accurate solver steps "
                       "(about twice the time). Each setting can still be changed afterwards")
@@ -445,7 +462,7 @@ class LIQUID_OT_quality(bpy.types.Operator):
     def execute(self, context):
         domain = domain_for(context)
         if domain is None:
-            self.report({"ERROR"}, "Select a liquid domain")
+            self.report({"ERROR"}, "Select an Aquaris domain")
             return {"CANCELLED"}
         if session.active() is not None:
             self.report({"ERROR"}, "Stop the simulation before changing quality")
@@ -477,7 +494,7 @@ class LIQUID_OT_diagnostics(bpy.types.Operator):
             except Exception as exc:
                 details["settings_error"] = str(exc)
         context.window_manager.clipboard = json.dumps(details, indent=2, ensure_ascii=False)
-        self.report({"INFO"}, "Liquid diagnostics copied to clipboard")
+        self.report({"INFO"}, "Aquaris diagnostics copied to the clipboard")
         return {"FINISHED"}
 
 

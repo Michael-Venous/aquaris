@@ -54,7 +54,9 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("COLLIDER", "Collider", "A solid the liquid cannot enter: walls, floors, containers, moving objects"),
         ("OUTFLOW", "Outflow", "Deletes any liquid that enters this object's bounding box (a drain or a sink)"),
         ("EFFECTOR", "Effector", "A force field around this object that pushes the liquid: force, wind, vortex or turbulence"),
-    ], default="NONE", update=_role_update)
+    ], default="NONE", update=_role_update,
+        description="What this object does in an Aquaris simulation. A domain holds the simulation's settings; emitters, colliders, "
+                    "outflows and effectors take part when they are in the matching collection of a domain")
     enabled: BoolProperty(name="Enabled", default=True,
                           description="Animate to enable or disable this participant")
     collider_margin: FloatProperty(name="Margin", default=0.0, min=0.0, soft_max=0.5, subtype="DISTANCE", unit="LENGTH",
@@ -181,10 +183,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                  "splashes. Right for previews and final renders", 4),
         ("GPU", "Detailed", "Made on the graphics card in milliseconds, keeping every particle-sized bump and ripple: looks "
                             "busier and more textured than Smooth", 3),
-    ], default="GPU_SMOOTH")
+    ], default="GPU_SMOOTH", description="How the liquid surface is built from the particles for baked, recorded and Surface output")
     droplet_scale: FloatProperty(update=_surface_update, name="Droplet Size", default=0.5, min=0.05, max=1, subtype="FACTOR",
-                                 description="Size of small flying droplets in the surface mesh (Final quality only). 1 keeps their "
-                                             "real volume; smaller values draw splashes as finer spray")
+                                 description="Size of small flying droplets in the surface mesh. 1 keeps their real volume; "
+                                             "smaller values draw splashes as finer spray")
     surface_contact: BoolProperty(update=_surface_update, name="Stick to Colliders", default=True,
                                   description="Let the liquid's surface meet colliders it rests against (a glass, a floor, a tank "
                                               "wall) instead of standing off them by about a particle radius. Without it, water in "
@@ -236,7 +238,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                    "Blender geometry and does not render. Bake or switch to Surface for renderable liquid"),
         ("SURFACE", "Surface", "Real Blender meshes for the liquid and whitewater, with their materials: what renders"),
         ("PARTICLES", "Particles", "Show the simulation's particles instead of a surface, to see what the solver is doing"),
-    ], default="PREVIEW", update=_display_update)
+    ], default="PREVIEW", update=_display_update, description="What the viewport shows of the liquid")
     status: StringProperty(name="Status", default="Ready", options={"SKIP_SAVE"})
     progress: StringProperty(name="Progress", options={"SKIP_SAVE"})  # a running bake's frame, time so far and left
     bake_summary: StringProperty(name="Last Bake")  # how the last bake of this domain went (kept with the file)
@@ -286,16 +288,21 @@ class LiquidProperties(bpy.types.PropertyGroup):
     volume_resolution: EnumProperty(name="Volume Resolution", items=[
         ("VOXEL_SIZE", "Voxel Size", "Resample the grid at the selected voxel size before conversion"),
         ("GRID", "Original Grid", "Convert at the volume file's native voxel resolution"),
-    ], default="VOXEL_SIZE")
+    ], default="VOXEL_SIZE", description="At what resolution the volume is read")
     volume_voxel_size: FloatProperty(name="Volume Voxel Size", default=0.065, min=0.005,
-                                     subtype="DISTANCE")
+                                     subtype="DISTANCE",
+                                     description="Size of the voxels the volume is resampled to before it is turned into a "
+                                                 "surface; smaller is more exact and slower")
     mask_type: EnumProperty(name="Texture Mask", items=[
         ("NONE", "None", "No additional texture mask"),
         ("TEXTURE", "Blender Texture", "Use native procedural texture intensity"),
         ("IMAGE", "Image", "Use projected image luminance multiplied by alpha"),
-    ], default="NONE")
-    mask_texture: PointerProperty(name="Mask Texture", type=bpy.types.Texture)
-    mask_image: PointerProperty(name="Mask Image", type=bpy.types.Image)
+    ], default="NONE", description="Switch emission on and off across the source with a texture or an image: liquid is made "
+                                   "only where the mask passes Mask Threshold")
+    mask_texture: PointerProperty(name="Mask Texture", type=bpy.types.Texture,
+                                  description="Procedural texture whose intensity is the mask")
+    mask_image: PointerProperty(name="Mask Image", type=bpy.types.Image,
+                                description="Image (or numbered image sequence) whose brightness, multiplied by its alpha, is the mask")
     mask_image_offset: IntProperty(name="Sequence Offset", default=0,
                                    description="An image sequence mask uses the file numbered scene frame plus this offset; "
                                                "the first and last files are held outside the sequence")
@@ -303,22 +310,26 @@ class LiquidProperties(bpy.types.PropertyGroup):
         ("BOUNDS", "Source Bounds", "Map each evaluated geometry's local bounds to zero through one"),
         ("OBJECT", "Object", "Use source geometry local coordinates"),
         ("WORLD", "World", "Use world coordinates"),
-    ], default="BOUNDS")
+    ], default="BOUNDS", description="The space the texture or image mask is laid out in")
     mask_projection: EnumProperty(name="Image Projection", items=[
         ("XY", "XY", "Project onto local texture X/Y"),
         ("XZ", "XZ", "Project onto local texture X/Z"),
         ("YZ", "YZ", "Project onto local texture Y/Z"),
-    ], default="XY")
-    mask_scale: FloatVectorProperty(name="Mask Scale", default=(1, 1, 1), size=3)
-    mask_offset: FloatVectorProperty(name="Mask Offset", default=(0, 0, 0), size=3)
+    ], default="XY", description="Which pair of axes the image is projected along")
+    mask_scale: FloatVectorProperty(name="Mask Scale", default=(1, 1, 1), size=3,
+                                    description="Scale of the mask along each axis of the chosen coordinates")
+    mask_offset: FloatVectorProperty(name="Mask Offset", default=(0, 0, 0), size=3,
+                                     description="Shift of the mask along each axis of the chosen coordinates")
     # Effectors: the same names as before 0.3.0, so scenes made then keep their fields.
     effector_kind: EnumProperty(name="Force", items=[
         ("FORCE", "Force", "A uniform acceleration (Acceleration times Strength) within the radius"),
         ("WIND", "Wind", "Acceleration along the object's local Z within the radius"),
         ("VORTEX", "Vortex", "Swirl around the object's local Z within the radius; Strength is the acceleration along the swirl"),
         ("TURBULENCE", "Turbulence", "Moving, spatially varying gusts a quarter of the radius across"),
-    ], default="WIND")
-    force_vector: FloatVectorProperty(name="Acceleration", default=(0, 0, 1), size=3, subtype="ACCELERATION")
+    ], default="WIND", description="The kind of force this effector applies to liquid within its Radius")
+    force_vector: FloatVectorProperty(name="Acceleration", default=(0, 0, 1), size=3, subtype="ACCELERATION",
+                                      description="Direction (and relative size) of a uniform force, in world space; "
+                                                  "multiplied by Strength")
     force_strength: FloatProperty(name="Strength", default=5, min=-1000, max=1000, soft_min=-50, soft_max=50,
                                   description="Acceleration in m/s² (gravity is 9.81); negative reverses the field")
     force_radius: FloatProperty(name="Radius", default=2, min=0.01, subtype="DISTANCE",

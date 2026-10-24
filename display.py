@@ -576,7 +576,7 @@ def apply(scene, domain, header, payload):
         status += f" · {header['simulation_ms']:.1f} ms sim"
     if header.get("emission_clipped", 0):
         status += f" · {header['emission_clipped']:,} source samples excluded by solids"
-    warning = ("GPU mesher could not take this frame and Fast was used: " + str(header["mesh_fallback"])[:160]
+    warning = ("The GPU surface builder could not take this frame, so the slower CPU one was used: " + str(header["mesh_fallback"])[:160]
                if header.get("mesh_fallback") else "")
     # One write each, and none when unchanged: every property write makes Blender redraw.
     if p.status != status:
