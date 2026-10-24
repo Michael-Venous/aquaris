@@ -1,7 +1,9 @@
 """Process isolation for the native GPU runtime; no bpy access on worker threads."""
 from collections import deque
+import json
 import mmap
 import os
+import platform
 import secrets
 import sys
 from pathlib import Path
@@ -65,7 +67,47 @@ def find_worker():
     for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise RuntimeError("The Aquaris worker is missing. Build or install the Aquaris extension package.")
+    raise RuntimeError("The Aquaris worker (the solver program) is missing from this installation. "
+                       "Reinstall the Aquaris extension ZIP made for your operating system.")
+
+
+def platform_tag():
+    """The extension platform this Python runs on, as the package names it."""
+    machine = platform.machine().lower()
+    if sys.platform.startswith("linux") and machine in {"x86_64", "amd64"}:
+        return "linux-x64"
+    if os.name == "nt" and machine in {"x86_64", "amd64"}:
+        return "windows-x64"
+    if sys.platform == "darwin" and machine == "arm64":
+        return "macos-arm64"
+    return ""
+
+
+def worker_problem(version=None):
+    """Why the bundled worker cannot be used, in words for the user, or '' when it looks usable.
+
+    Checks that the worker exists and, for a packaged install, that build_info.json (written by the packager)
+    agrees with this computer's platform and with `version`, the add-on's version tuple."""
+    try:
+        worker = find_worker()
+    except RuntimeError as exc:
+        return str(exc)
+    if os.name != "nt" and not os.access(worker, os.X_OK):
+        return "The Aquaris worker is not executable. Reinstall the extension (a copy that lost its file permissions cannot run)."
+    info = worker.parent.parent / "build_info.json"
+    if not info.is_file():
+        return ""  # a development checkout
+    try:
+        details = json.loads(info.read_text())
+    except (OSError, ValueError):
+        return ""
+    tag = platform_tag()
+    if tag and details.get("platform") and details["platform"] != tag:
+        return f"This Aquaris package is for {details['platform']}, but Blender is running on {tag}. Install the matching ZIP."
+    built = details.get("extension_version")
+    if version and built and built != ".".join(map(str, version)):
+        return f"The worker is from Aquaris {built}, not {'.'.join(map(str, version))}. Restart Blender, or reinstall the extension."
+    return ""
 
 
 def _private_directory(path):
@@ -95,7 +137,7 @@ def _shader_cache_directory():
     else:
         base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "aquaris"
     identity = str(os.getuid()) if hasattr(os, "getuid") else "user"
-    for candidate in (base / "shaders", Path(tempfile.gettempdir()) / ("liquaris-shaders-" + identity)):
+    for candidate in (base / "shaders", Path(tempfile.gettempdir()) / ("aquaris-shaders-" + identity)):
         cache = _private_directory(candidate)
         if cache is None:
             continue

@@ -166,11 +166,18 @@ class LIQUID_preferences(bpy.types.AddonPreferences):
         description="Part of the GPU's name, such as 4060, or its number. The GPU in use is shown in the Domain's Diagnostics")
 
     def draw(self, context):
-        row = self.layout.row()
+        from . import bl_info, bridge
+        layout = self.layout
+        row = layout.row()
         row.prop(self, "simulation_gpu")
         if self.simulation_gpu == "NAMED":
             row.prop(self, "simulation_gpu_name")
-        draw_keymaps(self.layout.box(), context)
+        draw_keymaps(layout.box(), context)
+        problem = bridge.worker_problem(bl_info["version"])
+        status = layout.column(align=True)
+        status.alert = bool(problem)
+        status.label(text="Aquaris " + ".".join(map(str, bl_info["version"])), icon="MOD_FLUIDSIM")
+        status.label(text=problem or "Solver worker found", icon="ERROR" if problem else "CHECKMARK")
 
 
 def _domain_poll(scene, obj):

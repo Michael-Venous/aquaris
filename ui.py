@@ -1,4 +1,4 @@
-"""Fumaris-style participant collections, transport and bake controls."""
+"""Aquaris panels: participant settings, the Simulate block, collections, display, cache and diagnostics."""
 
 import json
 import os
@@ -36,6 +36,16 @@ def _wrapped(layout, text, width, icon="NONE", alert=False, lines=6):
     column.alert = alert
     for index, line in enumerate(textwrap.wrap(text, width=width)[:lines]):
         column.label(text=line, icon=icon if index == 0 else "BLANK1")
+
+
+def _error_hint(error):
+    """A next step for a worker failure the user can act on without reading the console, else ''.
+    (A missing worker already says what to do in its own message.)"""
+    text = (error or "").lower()
+    if "worker" in text and ("not running" in text or "stopped" in text):
+        return ("The solver process ended. Check that a Vulkan-capable GPU driver is installed and up to date, "
+                "then use Copy Diagnostics (Diagnostics section) if you contact support.")
+    return ""
 
 
 def _control(layout, text, action, icon):
@@ -97,10 +107,10 @@ def _participant(layout, context):
         box.prop(p, "force_strength")
         box.prop(p, "force_radius")
     elif p.role == "OUTFLOW":
-        box.label(text="Removes particles inside the world bounding box")
+        box.label(text="Removes liquid inside this object's bounding box")
     elif p.role == "COLLIDER":
         box.prop(p, "collider_margin")
-        box.label(text="Evaluated mesh surface; animation supported")
+        box.label(text="Uses the evaluated mesh surface, with modifiers and animation")
 
 
 
@@ -123,6 +133,9 @@ def _transport(layout, context, domain, compact=False):
         _wrapped(box, p.bake_summary, width, icon="FILE_TICK", lines=2)
     if p.last_error:
         _wrapped(box, p.last_error + " (details: Diagnostics, at the bottom)", width, icon="ERROR", alert=True)
+        hint = _error_hint(p.last_error)
+        if hint:
+            _wrapped(box, hint, width, icon="INFO")
     if p.runtime_warning:
         _wrapped(box, p.runtime_warning, width, icon="INFO", alert=True)
     row = box.row(align=True)
@@ -208,6 +221,12 @@ def _diagnostics(layout, context, domain):
 def _draw(layout, context):
     obj = context.object
     if obj is None:
+        # Nothing is selected (a new scene): offer the way in instead of an empty tab.
+        layout.label(text="No object selected", icon="INFO")
+        setup = layout.row()
+        setup.enabled = session.active() is None
+        setup.operator("fumaris_liquid.quick_setup", text="Quick Setup…", icon="ADD")
+        layout.label(text="or select a domain or participant to edit it")
         return
     layout.use_property_split = True
     layout.use_property_decorate = True
@@ -359,10 +378,6 @@ class LIQUID_PT_sidebar(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Aquaris"
-
-    @classmethod
-    def poll(cls, context):
-        return context.object is not None
 
     def draw(self, context):
         _draw(self.layout, context)
