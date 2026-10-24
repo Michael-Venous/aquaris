@@ -1,10 +1,10 @@
-# Aquaris development build
+# Aquaris documentation
 
 Aquaris simulates liquid as particles moved by a pressure solve on a grid, in
 its own Vulkan worker process. Its scene properties, simulation process and
-caches are independent of the Fumaris smoke/fire addon. This is an early
-implementation; platform and physical accuracy claims depend on the validation
-record shipped with the build.
+caches are independent of the Fumaris smoke/fire addon, and both can be
+installed together. This is an early release; platform and physical accuracy
+claims depend on the validation record shipped with the build.
 
 ## What this version does and does not do
 
@@ -20,37 +20,36 @@ tension, whitewater and force fields have since returned on it.
 Scenes and caches from earlier versions still open. A scene that used the
 particle solver now simulates on the grid solver and looks different; its
 removed settings are ignored. A cache baked earlier plays back as it was
-baked, including its whitewater (see Output, recording and rendering). A scene
-with an enabled effector does not start until the effector is disabled or
-removed.
+baked, including its whitewater (see Output, recording and rendering).
 
 ## Start a simulation
 
 Open **Physics > Aquaris** or the viewport's **Aquaris** sidebar.
-**Quick Setup** creates an isolated setup at the 3D cursor. The three
-**real-time** setups (**Splash**, **Dam Break**, **Pour**) have 15,000 to
-25,000 particles and the GPU surface, sized to play back live with a surface
+**Quick Setup** creates an isolated setup at the 3D cursor. The four
+**real-time** setups (**Splash**, **Dam Break**, **Pour**, **Wave Tank**) have
+15,000 to 26,000 particles and the GPU surface, sized to play back live with a surface
 on a mid-range graphics card; Splash, a ball dropped into a pool, is the
 default. **Dam Break (detailed)** and **Pour (detailed)** are the same two
 scenes at a particle radius of 0.02 (about 50,000 particles) with the Smooth
 mesh, and are meant to be baked. Existing scene objects stay in place. Each setup creates a domain
-settings object, participant collections, a five-solid basin and three output
-objects. Emitters appear as wireframes and are hidden from final rendering.
+settings object, participant collections, a basin of five solids (the Wave
+Tank has an open tray instead) and three output objects. **Add > Aquaris
+Liquid** in the 3D viewport adds any setup at the 3D cursor without the dialog,
+and **Quick Setup** is also offered when nothing is selected. Emitters appear as wireframes and are hidden from final rendering.
 
 Select the domain or one of its participants, then **Play**. The selected
 participant's settings appear first. Simulation, allocation, display
 and cache controls are collapsible; no domain-object dropdown is required.
 When a participant belongs to multiple simulations, select the desired domain.
-The working product name is Aquaris; existing extension IDs and caches retain
-their original identity. **Pause** retains the entire running solver
+Internally the extension keeps its original ID (`fumaris_liquid`), so scenes
+and caches from earlier development versions load unchanged. **Pause** retains the entire running solver
 state; **Resume** continues it. **Stop** terminates the worker. **Reset** clears
 the displayed geometry; it does not delete recorded frames. One liquid session
 can run at a time. Pausing completes the already submitted frame. Changing the
 active scene or loading a different file stops the worker.
 
 Domain minimum/maximum specify the initial GPU region. The native region grows
-as needed. **Remove Escaped Liquid** (on by default, under Allocation and
-Budgets) removes liquid that has fallen or been thrown more than a margin (one
+as needed. **Remove Escaped Liquid** (on by default, under Advanced) removes liquid that has fallen or been thrown more than a margin (one
 metre, or a quarter of the scene's size if that is more) below or beside the
 region and every collider and emitter: nothing is left for it to land on, and
 it would otherwise be simulated for as long as it falls. The side gravity
@@ -183,7 +182,7 @@ result. The solver takes a few steps a frame however fast the liquid moves;
 15,000 to 25,000 particles play back live on a mid-range graphics card, and
 about 100,000 take roughly 100 ms a frame on an RTX 4060 Ti.
 
-**FLIP Ratio** (Simulation, default 0.95) sets how lively the liquid is. Each
+**FLIP Ratio** (Liquid section, default 0.95) sets how lively the liquid is. Each
 step a particle takes that share of its new velocity from the change the grid
 computed (FLIP: keeps detail and energy, but particle velocities get noisy)
 and the rest from the grid's own smooth velocity (PIC: calm, looks thicker
@@ -194,7 +193,7 @@ The grid is a window fitted to the liquid before every step. There is no
 fixed domain box and no wall at the edge of the region: liquid is held only by
 collider meshes.
 
-**Step Size** (Simulation, default 3) is how far the fastest liquid may travel
+**Step Size** (Liquid section, default 3) is how far the fastest liquid may travel
 in one solver step, in grid cells. At 3 the solver takes about half the steps
 and is the right choice for previews, but how high a splash runs up a wall and
 how the liquid settles then depend on Substeps (by about a third between 1 and
@@ -202,7 +201,7 @@ how the liquid settles then depend on Substeps (by about a third between 1 and
 heights up the far wall, as measured ones do, for about twice the time per
 frame. **Draft** sets 3 and **Final** sets 1.
 
-**Collider Step** (Simulation, default 1.8) is how far a moving collider near
+**Collider Step** (Liquid section, default 1.8) is how far a moving collider near
 the liquid may travel in one solver step, in grid cells, never more than Step
 Size. A fast collider sets the number of steps: a ball falling into a pool takes
 about three steps a frame at 1.8 and five at 0.9. Lower it to 0.9 for the
@@ -223,11 +222,11 @@ liquid's starting height. At Step Size 3 that jet is larger than at 1.
 
 ## Draft and Final
 
-The **Draft** and **Final** buttons under the domain's status set the surface
+The **Draft** and **Final** buttons under the domain's status set the
 settings that trade speed for quality in one step, and light up when the
 current settings match. Draft: solver Step Size 3, a surface cell
 of 1.5 radii and the **Smooth** mesh quality. Final: solver Step Size 1 and the
-**Final** mesh quality at a surface cell of one radius. Every setting stays
+**Smooth** mesh quality at a surface cell of one radius. Every setting stays
 editable afterwards. New domains and every Quick Setup start with the fast
 preview settings (Smooth mesh, GPU Surface display, Step Size 3, Substeps 1).
 
@@ -271,9 +270,8 @@ runaway setup.
 
 With **Follow Particle Radius** (on by default) the surface cell is
 **Surface Cell** times the particle radius, so the surface keeps its level of
-detail when the resolution changes. 1 resolves every particle. With Fast
-quality 2 meshes about three times faster and looks softer; Final and Smooth
-refine the surface back to one radius, so a larger cell does not speed them up. Turn it off to type an absolute
+detail when the resolution changes. 1 resolves every particle; larger values
+mesh faster and look softer. Turn it off to type an absolute
 **Surface Cell Size**. Domains saved before 0.2.11 used an absolute size; they
 now follow the radius at a factor of 1 unless this is turned off.
 
@@ -341,8 +339,11 @@ after confirming no simulation is using it.
 Enable **Timeline Cache Playback**, scrub frames, or reopen the scene to load
 the chosen slot. Missing frames clear the output so a render cannot use stale
 geometry. Playback also runs during background rendering. Keep the extension
-installed and its cache directory accessible. **Export Surface Alembic** exports
-a contiguous recorded frame range for applications that do not load the addon.
+installed and its cache directory accessible. **Export Alembic** (Cache and Export)
+writes the surface, particles or whitewater of a contiguous recorded frame
+range for applications that do not load the addon, and **Export VDB** writes
+one OpenVDB file per baked frame (the surface as a level set, with the liquid's
+density and velocity) into a folder.
 
 Render caches store mesh and particle output, not an exact resumable solver
 state. Preview recording does not imply backward solver scrubbing. To start a
@@ -361,20 +362,20 @@ too large; at 1 both are within a few percent of the small-step result.
 Copy Diagnostics includes the current warning, device, Blender version and
 serialized settings.
 
-The liquid solver runs on the GPU, as do the two **GPU** mesh qualities. The
-Fast, Final and Smooth surface reconstructions and the transfer to Blender run
-on the CPU. Scene sampling runs on Blender's main thread; large scenes may
-pause the UI during sampling.
+The liquid solver runs on the GPU, as do both mesh qualities (a frame too large
+for the graphics card is meshed on the CPU instead, with a warning). Scene
+sampling and the transfer of results to Blender run on Blender's main thread;
+large scenes may pause the UI during sampling.
 No fluid-driven rigid body, multi-liquid phase, ocean-spectrum tool or
 viscoelastic material is exposed in this build. Volume input converts a single
 isosurface; it does not import VDB velocity grids or multiple liquid phases.
 
-The grid-only build was checked on Linux with an Intel ARL GPU on 2026-10-12:
-the two detailed and three real-time setups run and keep their liquid in the
+The solver has been exercised on Linux with NVIDIA (RTX 3090 Ti, RTX 4060 Ti)
+and Intel (Arc/ARL) GPUs: the Quick Setups run and keep their liquid in the
 basin, bakes are written and play back, pause and resume hold and continue
 the same state, and a cache with whitewater in the earlier format plays back
-with its look controls. It has not been run in an interactive viewport, on
-Windows or on macOS. Coarse sources can produce visibly layered inflow;
+with its look controls. Windows and macOS packages are not yet validated.
+AMD GPUs have not been tested. Coarse sources can produce visibly layered inflow;
 smaller particle radius and round source shapes give more detail at increased
 cost.
 
@@ -435,6 +436,21 @@ replace them.
 
 Blender's own timeline playback stops a live preview (a bake continues).
 
+## Header controls, shortcuts and preferences
+
+While the scene has an Aquaris domain, the 3D viewport's and the timeline's
+headers show **Play / Pause** and **Stop** buttons (and an **Aquaris** menu
+with the domain to control) that work whatever is selected. **Shift+Alt+L**
+plays, pauses and resumes; **Shift+Alt+K** stops. Both can be changed in
+Preferences > Add-ons > Aquaris, which also shows the add-on version and
+whether the bundled solver worker was found for this computer. (Fumaris uses
+other keys, so the two add-ons can be installed together.)
+
+If a simulation reports that the worker is missing or not running, reinstall
+the extension ZIP that matches your operating system and check that a current
+Vulkan GPU driver is installed; **Copy Diagnostics** (Diagnostics section)
+collects the details to send with a support request.
+
 ## Interactive performance
 
 **Preview Rate** (under Play and Bake) sets how fast the live preview plays:
@@ -488,8 +504,9 @@ subframe ticks with advected/staggered sampling to avoid pulse-shaped layers.
 Preview polling no
 longer imposes a fixed 20 ms wait; it redraws on results rather than every poll.
 
-A private per-user temporary shader cache speeds repeated Play/Stop cycles.
-Keys include source, defines, shader includes and cache/build version; exact
-keys and checksums are verified. Missing/corrupt entries are recompiled. Clearing
-the operating system's temporary directory simply makes the next start cold.
-The cache is optional and never stores simulation state.
+A private per-user shader cache speeds repeated Play/Stop cycles (on Linux
+`~/.cache/aquaris/shaders`, on Windows `%LOCALAPPDATA%\Aquaris\shaders`, on
+macOS `~/Library/Caches/Aquaris/shaders`). Keys include source, defines, shader
+includes and cache/build version; exact keys and checksums are verified.
+Missing/corrupt entries are recompiled, and deleting the folder simply makes
+the next start cold. The cache is optional and never stores simulation state.
