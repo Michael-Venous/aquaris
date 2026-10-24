@@ -141,7 +141,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                            "your graphics memory")
     max_particles: IntProperty(name="Particle Budget", default=100000, min=128, max=8000000,
                                description="The most liquid particles allowed; the simulation stops with a message when it needs more")
-    max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=4000000,
+    max_boundary: IntProperty(name="Collider Sample Budget", default=200000, min=1000, max=8000000,
                               description="The most points used to describe collider surfaces; large colliders and small particles need more")
     whitewater_generate: BoolProperty(name="Generate Whitewater", default=False,
                                       description="Give off spray, foam and bubbles where liquid traps air or a wave crest breaks, "

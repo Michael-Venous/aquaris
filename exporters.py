@@ -35,7 +35,7 @@ def participants(scene, domain):
 
 # Four million particles is what the surface path can follow: a one-radius
 # cell needs 9-14 surface nodes per particle against the 64 million cell cap.
-PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT = 4_000_000, 4_000_000, 64_000_000
+PARTICLE_LIMIT, BOUNDARY_LIMIT, MESH_CELL_LIMIT = 4_000_000, 8_000_000, 64_000_000
 # Emitters are sampled on their bounding-box lattice before the inside test. That lattice only costs temporary
 # memory (about 100 bytes a point), so it has its own limit; the particles actually emitted are what PARTICLE_LIMIT
 # (or Max Particles) bounds. Until 2026-10-24 the lattice was held to the particle limit: a sloping sea emitter

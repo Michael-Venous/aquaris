@@ -171,7 +171,7 @@ reaches out to its Radius, at full strength up to three quarters of it.
 Outflows remove particles inside their evaluated **world-aligned bounding box**.
 The runtime supports 32 outflows, five of which (six without
 gravity) are taken by Remove Escaped Liquid while it is on. Collider surfaces are sampled
-up to 4,000,000 samples; finer particle radii need more of them and more GPU
+up to 8,000,000 samples; finer particle radii need more of them and more GPU
 memory.
 
 ## The solver
@@ -261,7 +261,7 @@ bake.
 ## Limits and surface detail
 
 **Automatic Limits** (on by default) lets a domain use up to the solver's own
-limits: 4 million liquid particles, 4 million collider samples and 64 million
+limits: 4 million liquid particles, 8 million collider samples and 64 million
 surface cells (a fixed Particle Budget may be set up to 8 million for
 particle-only output). Nothing is reserved in advance; memory is taken as the
 simulation grows, so lowering the particle radius simply works until the GPU
