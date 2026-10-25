@@ -139,21 +139,20 @@ def _transport(layout, context, domain, compact=False):
     if p.runtime_warning:
         _wrapped(box, p.runtime_warning, width, icon="INFO", alert=True)
     idle = running is None
-    if not compact:
-        _, protected = _slot_summary(domain)
-        bake_row = box.row(align=True)
-        bake_row.scale_y = 1.2
-        bake = bake_row.row(align=True)
-        bake.enabled = idle and not protected
-        _control(bake, "Bake", "BAKE", "RENDER_ANIMATION")
-        stop = bake_row.row(align=True)
-        stop.enabled = owned and running.bake and not running.stopping
-        _control(stop, "Stop", "CANCEL", "CANCEL")
-        delete = bake_row.row(align=True)
-        delete.enabled = idle and not protected
-        delete.operator("fumaris_liquid.cache", text="Delete", icon="TRASH").action = "DELETE"
-        if protected:
-            box.label(text="Cache slot is protected", icon="LOCKED")
+    _, protected = _slot_summary(domain)
+    bake_row = box.row(align=True)
+    bake_row.scale_y = 1.2
+    bake = bake_row.row(align=True)
+    bake.enabled = idle and not protected
+    _control(bake, "Bake", "BAKE", "RENDER_ANIMATION")
+    stop = bake_row.row(align=True)
+    stop.enabled = owned and running.bake and not running.stopping
+    _control(stop, "Stop", "CANCEL", "CANCEL")
+    delete = bake_row.row(align=True)
+    delete.enabled = idle and not protected
+    delete.operator("fumaris_liquid.cache", text="Delete", icon="TRASH").action = "DELETE"
+    if protected:
+        box.label(text="Cache slot is protected", icon="LOCKED")
     preview = box.row(align=True)
     preview.scale_y = 1.2
     play = preview.row(align=True)

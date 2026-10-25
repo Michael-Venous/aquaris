@@ -49,6 +49,10 @@ class LIQUID_OT_playback_toggle(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        running = session.active()
+        if running is not None and running.bake:
+            cls.poll_message_set("Stop the bake before starting a live preview")
+            return False
         if resolve_domain(context) is None:
             cls.poll_message_set("Choose an Aquaris domain in the header's Aquaris menu")
             return False
