@@ -110,8 +110,8 @@ def _realtime(p):
 
 def _detailed(p):
     """The real-time settings (GPU preview, large steps) at 2.7 times the particles
-    (radius 0.02): about 48,000 particles in the dam break. The Final button
-    switches to the final mesh and small steps for a bake."""
+    (radius 0.02): about 48,000 particles in the dam break. Use Step Size 1
+    and Surface Cell 1 for an accurate, detailed bake."""
     _realtime(p)
     p.particle_radius = 0.02
     p.mesh_cell_size = 0.02

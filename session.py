@@ -133,7 +133,7 @@ class Session:
         self._cleanup_retry_at = 0
         self._last_cleanup_report = None
         start, end = frame_range(scene, domain)
-        self.frame = start if bake else scene.frame_current
+        self.frame = start  # Every fresh simulation starts at its configured range; Resume keeps the current state.
         self.first_frame = self.frame
         self.last_frame = end if bake else None
         if bake and self.last_frame < self.frame:

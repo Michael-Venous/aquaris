@@ -57,8 +57,8 @@ class LIQUID_OT_setup(bpy.types.Operator):
         ("REALTIME_DAM_BREAK", "Dam Break (real-time)", "A wall of water released into pillars, sized to play back live"),
         ("REALTIME_POUR", "Pour (real-time)", "Continuous inflow into a pool, sized to play back live"),
         ("WAVE_TANK", "Wave Tank (real-time)", "A paddle makes waves that run up a beach; an open tray collider with a Margin"),
-        ("DAM_BREAK", "Dam Break (detailed)", "The dam break with about three times the particles; press Final before baking"),
-        ("POUR", "Pour (detailed)", "The pour with about three times the particles; press Final before baking"),
+        ("DAM_BREAK", "Dam Break (detailed)", "The dam break with about three times the particles; use Step Size 1 for accurate baking"),
+        ("POUR", "Pour (detailed)", "The pour with about three times the particles; use Step Size 1 for accurate baking"),
     ], default="SPLASH")
 
     @classmethod
@@ -96,7 +96,7 @@ class LIQUID_OT_control(bpy.types.Operator):
 
     @classmethod
     def description(cls, context, properties):
-        return {"PLAY": "Play the simulation live in the viewport", "PAUSE": "Pause the live simulation, keeping its state",
+        return {"PLAY": "Start a fresh live simulation at the beginning of its configured frame range", "PAUSE": "Pause the live simulation, keeping its state",
                 "RESUME": "Continue the paused simulation", "STOP": "Stop the simulation",
                 "BAKE": "Simulate the frame range and save every frame to the cache slot, for playback and rendering",
                 "CANCEL": "Stop the bake; the frames baked so far stay in the cache",

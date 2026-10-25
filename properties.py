@@ -99,8 +99,8 @@ class LiquidProperties(bpy.types.PropertyGroup):
     step_size: FloatProperty(name="Step Size", default=3.0, min=0.5, max=3.0, precision=1,
                              description="Speed against accuracy. How far the fastest liquid may move in one solver step, in grid "
                                          "cells: 3 takes about half the steps of 1 and is the fast preview; 1 is the accurate "
-                                         "setting for final results (splashes run up walls and settle as they should). The Draft and "
-                                         "Final buttons set 3 and 1. Can be changed while playing")
+                                         "setting for final results (splashes run up walls and settle as they should). "
+                                         "Can be changed while playing")
     collider_step: FloatProperty(name="Collider Step", default=1.8, min=0.25, max=3.0, precision=2,
                                  description="Speed against accuracy for moving colliders. How far a collider near the liquid may "
                                              "move in one solver step, in grid cells: fast colliders force extra steps. 1.8 suits "
@@ -171,7 +171,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                                  "surface looking the same. Turn off to set an absolute Surface Cell Size")
     mesh_cell_factor: FloatProperty(update=_surface_update, name="Surface Cell", default=1.0, min=0.5, max=4.0, precision=2,
                                     description="Surface detail, in particle radii: 1 shows every particle's worth of detail; larger "
-                                                "values mesh faster and look softer. Draft sets 1.5, Final sets 1")
+                                                "values mesh faster and look softer. 1 gives fine detail; 1.5 is faster")
     mesh_cell_size: FloatProperty(update=_surface_update, name="Surface Cell Size", default=0.04, min=0.0001, soft_min=0.005, subtype="DISTANCE",
                                   description="Surface detail as a distance: smaller is finer and slower to mesh")
     max_mesh_cells: IntProperty(update=_surface_update, name="Surface Cell Budget", default=2000000, min=1000, max=64000000,

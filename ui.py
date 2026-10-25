@@ -138,32 +138,39 @@ def _transport(layout, context, domain, compact=False):
             _wrapped(box, hint, width, icon="INFO")
     if p.runtime_warning:
         _wrapped(box, p.runtime_warning, width, icon="INFO", alert=True)
-    row = box.row(align=True)
-    row.scale_y = 1.2
-    if owned:
-        if running.bake:
-            _control(row, "Cancel Bake", "CANCEL", "CANCEL")
-        else:
-            _control(row, "Resume" if running.paused else "Pause",
-                     "RESUME" if running.paused else "PAUSE", "PLAY" if running.paused else "PAUSE")
-            _control(row, "Stop", "STOP", "SNAP_FACE")
-    else:
-        row.enabled = running is None
-        _control(row, "Play", "PLAY", "PLAY")
-        if not compact:
-            _control(row, "Bake", "BAKE", "RENDER_ANIMATION")
-            _control(row, "Reset", "RESET", "FILE_REFRESH")
+    idle = running is None
+    if not compact:
+        _, protected = _slot_summary(domain)
+        bake_row = box.row(align=True)
+        bake_row.scale_y = 1.2
+        bake = bake_row.row(align=True)
+        bake.enabled = idle and not protected
+        _control(bake, "Bake", "BAKE", "RENDER_ANIMATION")
+        stop = bake_row.row(align=True)
+        stop.enabled = owned and running.bake and not running.stopping
+        _control(stop, "Stop", "CANCEL", "CANCEL")
+        delete = bake_row.row(align=True)
+        delete.enabled = idle and not protected
+        delete.operator("fumaris_liquid.cache", text="Delete", icon="TRASH").action = "DELETE"
+        if protected:
+            box.label(text="Cache slot is protected", icon="LOCKED")
+    preview = box.row(align=True)
+    preview.scale_y = 1.2
+    play = preview.row(align=True)
+    play.enabled = idle
+    _control(play, "Play", "PLAY", "PLAY")
+    pause = preview.row(align=True)
+    pause.enabled = owned and not running.bake and not running.stopping
+    paused = owned and running.paused
+    _control(pause, "Resume" if paused else "Pause", "RESUME" if paused else "PAUSE",
+             "PLAY" if paused else "PAUSE")
+    stop = preview.row(align=True)
+    stop.enabled = owned and not running.bake and not running.stopping
+    _control(stop, "Stop", "STOP", "CANCEL")
     if compact:
         return
     from .playback import draw_gpu_selection
     draw_gpu_selection(box, context)
-    quality = box.row(align=True)
-    quality.enabled = running is None
-    current = {name: getattr(p, name) for name in operators.QUALITY_LEVELS["DRAFT"]}
-    for level, label in (("DRAFT", "Draft"), ("FINAL", "Final")):
-        match = all(abs(current[name] - value) < 1e-6 if isinstance(value, float) else current[name] == value
-                    for name, value in operators.QUALITY_LEVELS[level].items())
-        quality.operator("fumaris_liquid.quality", text=label, depress=match).level = level
     settings = box.column()
     fixed = settings.column()
     fixed.enabled = running is None
