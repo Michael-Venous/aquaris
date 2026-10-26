@@ -389,6 +389,7 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
         old_playback = domain.fumaris_liquid.cache_playback
         old_frame = context.scene.frame_current
         muted = []  # (modifier, show_viewport, show_render) of the point outputs' display modifiers
+        export_modifier = export_group = None
         render_hidden = []  # outputs hidden from renders by the display mode: Alembic skips those
         try:
             frames = session.cache_for(domain).frames()
@@ -416,6 +417,18 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
                         muted.append((modifier, modifier.show_viewport, modifier.show_render))
                         modifier.show_viewport = modifier.show_render = False
             context.view_layer.objects.active = chosen[0]
+            if p.surface_object in chosen:
+                # Blender otherwise classifies the handler-updated surface as static
+                # and exports only its first sample. A geometry passthrough marks
+                # the mesh as evaluated without changing its vertices or attributes.
+                export_group = bpy.data.node_groups.new("Aquaris Alembic animation", "GeometryNodeTree")
+                export_group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+                export_group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+                incoming = export_group.nodes.new("NodeGroupInput")
+                outgoing = export_group.nodes.new("NodeGroupOutput")
+                export_group.links.new(incoming.outputs["Geometry"], outgoing.inputs["Geometry"])
+                export_modifier = p.surface_object.modifiers.new("Aquaris Alembic animation", "NODES")
+                export_modifier.node_group = export_group
             display.exporting = True
             domain.fumaris_liquid.cache_playback = True
             bpy.ops.wm.alembic_export(filepath=bpy.path.abspath(self.filepath),
@@ -426,6 +439,10 @@ class LIQUID_OT_export_alembic(bpy.types.Operator):
             return {"CANCELLED"}
         finally:
             display.exporting = False
+            if export_modifier is not None:
+                domain.fumaris_liquid.surface_object.modifiers.remove(export_modifier)
+            if export_group is not None:
+                bpy.data.node_groups.remove(export_group)
             for obj in render_hidden:
                 obj.hide_render = True
             for modifier, viewport, render in muted:
