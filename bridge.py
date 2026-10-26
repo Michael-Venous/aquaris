@@ -138,6 +138,15 @@ def _private_directory(path):
         return None
 
 
+def user_cache_root():
+    """Persistent, per-user cache location, independent of Blender's working directory."""
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Aquaris"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "Aquaris"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "aquaris"
+
+
 def _shader_cache_directory():
     """Compiled shader variants, kept across reboots.
 
@@ -146,12 +155,7 @@ def _shader_cache_directory():
     Entries are verified against their full source, so stale files are only
     unused; the oldest are removed because the worker stops saving at 512.
     """
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Aquaris"
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Caches" / "Aquaris"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "aquaris"
+    base = user_cache_root()
     identity = str(os.getuid()) if hasattr(os, "getuid") else "user"
     for candidate in (base / "shaders", Path(tempfile.gettempdir()) / ("aquaris-shaders-" + identity)):
         cache = _private_directory(candidate)

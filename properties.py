@@ -210,7 +210,7 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                  description="Save every frame of the live preview to the cache, so you can play it back, scrub "
                                              "the timeline or render it without baking again")
     cache_directory: StringProperty(name="Cache Directory", default="//fumaris_liquid_cache", subtype="DIR_PATH",
-                                    description="Folder where baked and recorded frames are saved (// is the .blend file's folder)")
+                                    description="Folder for baked and recorded frames. // uses the saved .blend folder; unsaved files use your user cache folder")
     cache_slot: StringProperty(name="Cache Slot", default="main",
                                description="Name of this bake inside the cache folder. Use different names to keep several "
                                            "versions and switch between them")

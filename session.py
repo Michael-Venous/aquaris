@@ -12,7 +12,7 @@ import bpy
 from bpy.app.handlers import persistent
 
 from . import display, exporters
-from .bridge import Bridge
+from .bridge import Bridge, user_cache_root
 from .cache import PARTICLE_BLOCKS, Cache
 from ._tasks import result_owned, submit_owned
 
@@ -98,10 +98,20 @@ class _Sender:
         self.queue.put(None)
 
 
+def cache_directory(domain):
+    """Blender-relative paths need a saved file; never fall back to the executable's cwd."""
+    configured = domain.fumaris_liquid.cache_directory
+    if not configured.strip():
+        raise RuntimeError("Choose a Cache Directory")
+    if configured.startswith("//") and not bpy.data.filepath:
+        return str(user_cache_root() / "simulations" / configured[2:])
+    return bpy.path.abspath(configured)
+
+
 def cache_for(domain):
     p = domain.fumaris_liquid
     identity = display.ensure_identity(domain)
-    directory = bpy.path.abspath(p.cache_directory)
+    directory = cache_directory(domain)
     cache = Cache(directory, identity, p.cache_slot)
     cache.compress = bool(getattr(p, "compress_cache", False))
     cache.drop = frozenset() if getattr(p, "cache_particles", True) else PARTICLE_BLOCKS
@@ -158,6 +168,10 @@ class Session:
             if self.cache.protected():
                 raise RuntimeError(f"Cache slot '{self.cache.slot}' is protected; unlock it or use a new slot")
             self.cache.acquire()
+            # Pin the recorded cache before a later Save As changes what // means.
+            p = self.domain.fumaris_liquid
+            if p.cache_directory.startswith("//"):
+                p.cache_directory = str(self.cache.root)
             # Check while holding the slot lock, through the retained owner.
             if self.cache.frames():
                 raise RuntimeError("This cache slot already contains frames; choose an empty slot or delete its cache")
@@ -324,6 +338,7 @@ class Session:
             try:
                 result = result_owned(self.future)
                 if self.phase == "STARTING":
+                    self.domain.fumaris_liquid.status = "Preparing first liquid frame…"
                     self.domain.fumaris_liquid.runtime_info = json.dumps(
                         {key: result.get(key) for key in ("device", "device_uuid", "backend", "protocol")}, ensure_ascii=False)
                 elif self.phase == "FRAME":
@@ -537,6 +552,7 @@ class Session:
             try:
                 result = result_owned(self.future)
                 if self.phase == "STARTING":
+                    self.domain.fumaris_liquid.status = "Preparing first liquid frame…"
                     self.domain.fumaris_liquid.runtime_info = json.dumps(
                         {key: result.get(key) for key in ("device", "device_uuid", "backend", "protocol")}, ensure_ascii=False)
                 elif self.phase == "FRAME":

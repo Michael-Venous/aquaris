@@ -1,4 +1,4 @@
-> **Aquaris 0.3.35-beta.1 — beta release.** Linux x64, Windows x64 and macOS arm64 / Blender 5.2+.
+> **Aquaris 0.3.36-beta.1 — beta release.** Linux x64, Windows x64 and macOS arm64 / Blender 5.2+.
 > This is prerelease software; keep backups of production scenes and caches.
 
 # Aquaris documentation
@@ -521,6 +521,8 @@ operations. Continuous sources emit at exact
 subframe ticks with advected/staggered sampling to avoid pulse-shaped layers.
 Preview polling no
 longer imposes a fixed 20 ms wait; it redraws on results rather than every poll.
+
+For an unsaved `.blend`, relative simulation cache paths use a persistent per-user Aquaris cache folder instead of Blender's working directory. Saved files initially resolve `//` beside the `.blend`. The first recording pins the chosen location to an absolute path so Save As keeps the existing bake accessible. To move a project and its cache together, copy both and update Cache Directory to the copied folder.
 
 A private per-user shader cache speeds repeated Play/Stop cycles (on Linux
 `~/.cache/aquaris/shaders`, on Windows `%LOCALAPPDATA%\Aquaris\shaders`, on

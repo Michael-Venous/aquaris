@@ -229,7 +229,7 @@ class LIQUID_OT_cache_slot_new(bpy.types.Operator):
         domain = domain_for(context)
         p = domain.fumaris_liquid
         try:
-            p.cache_slot = cache_module.next_slot_name(bpy.path.abspath(p.cache_directory), display.ensure_identity(domain), p.cache_slot)
+            p.cache_slot = cache_module.next_slot_name(session.cache_directory(domain), display.ensure_identity(domain), p.cache_slot)
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
