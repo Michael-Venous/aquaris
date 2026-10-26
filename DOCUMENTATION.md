@@ -1,4 +1,4 @@
-> **Aquaris 0.3.35-beta.1 — beta release.** Linux x64 / Blender 5.2+.
+> **Aquaris 0.3.35-beta.1 — beta release.** Linux x64, Windows x64 and macOS arm64 / Blender 5.2+.
 > This is prerelease software; keep backups of production scenes and caches.
 
 # Aquaris documentation
@@ -377,7 +377,7 @@ The solver has been exercised on Linux with NVIDIA (RTX 3090 Ti, RTX 4060 Ti)
 and Intel (Arc/ARL) GPUs: the Quick Setups run and keep their liquid in the
 basin, bakes are written and play back, pause and resume hold and continue
 the same state, and a cache with whitewater in the earlier format plays back
-with its look controls. Windows and macOS packages are not yet validated.
+with its look controls. Windows 11 x64 on Intel Arc 140V and macOS 26.6.1 arm64 on Apple M4 were qualified on 2026-10-26 with actual installed Blender bake, preview, pause/resume, stop/delete, save/reload and export checks. macOS is ad-hoc signed, not notarized; Intel Macs and older macOS versions are untested. Windows non-ASCII install paths remain unqualified.
 AMD GPUs have not been tested. Coarse sources can produce visibly layered inflow;
 smaller particle radius and round source shapes give more detail at increased
 cost.
@@ -512,7 +512,7 @@ represent the requested detail, recenter the scene or increase mesh cell size.
 
 The preview follows domain visibility. Reset, file loading and unregistering
 release its temporary buffers. The OpenGL and Vulkan viewport paths were tested
-on NVIDIA under Linux. This does not qualify Metal, macOS or Windows.
+on NVIDIA under Linux. Windowed installed-extension preview drawing was also verified on Windows/Intel Arc and macOS/Apple M4 (Metal) on 2026-10-26. Other platform/GPU combinations remain untested.
 
 Static collider samples are retained by the worker until geometry or velocity
 changes (including collider removal). Animated/evaluated geometry is still
