@@ -1,4 +1,4 @@
-> **Aquaris 0.3.36-beta.1 — beta release.** Linux x64, Windows x64 and macOS arm64 / Blender 5.2+.
+> **Aquaris 0.3.37-beta.1 — beta release.** Linux x64, Windows x64 and macOS arm64 / Blender 5.2+.
 > This is prerelease software; keep backups of production scenes and caches.
 
 # Aquaris documentation
