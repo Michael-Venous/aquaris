@@ -153,7 +153,7 @@ def _shader_cache_directory():
     The temporary directory used before lost them at every restart, and each
     grid layout then cost seconds of compilation at the first Preview again.
     Entries are verified against their full source, so stale files are only
-    unused; the oldest are removed because the worker stops saving at 512.
+    unused; the worker prunes its oldest grid variants toward a 512-file budget.
     """
     base = user_cache_root()
     identity = str(os.getuid()) if hasattr(os, "getuid") else "user"
