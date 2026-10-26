@@ -1,9 +1,9 @@
 """Aquaris Blender integration. The native worker simulates on a grid in Vulkan compute."""
 
 bl_info = {
-    "name": "Aquaris",
+    "name": "Aquaris Beta",
     "author": "Fumaris",
-    "version": (0, 3, 33),
+    "version": (0, 3, 35),
     "blender": (5, 2, 0),
     "location": "Properties > Physics; Viewport > Aquaris",
     "description": "Interactive Vulkan liquid simulation",

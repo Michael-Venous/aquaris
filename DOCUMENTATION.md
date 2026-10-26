@@ -1,3 +1,6 @@
+> **Aquaris 0.3.35-beta.1 — beta release.** Linux x64 / Blender 5.2+.
+> This is prerelease software; keep backups of production scenes and caches.
+
 # Aquaris documentation
 
 Aquaris simulates liquid as particles moved by a pressure solve on a grid, in
