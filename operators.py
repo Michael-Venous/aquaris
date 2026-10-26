@@ -200,7 +200,11 @@ class LIQUID_OT_cache(bpy.types.Operator):
             if self.action == "DELETE":
                 cache.delete()
                 display.clear(domain)
-                domain.fumaris_liquid.status = "Cache slot deleted"
+                p = domain.fumaris_liquid
+                p.progress = ""
+                p.bake_summary = ""
+                p.last_error = ""
+                p.status = "Cache slot deleted"
             else:
                 header, payload = cache.read(context.scene.frame_current)
                 display.apply(context.scene, domain, header, payload)
