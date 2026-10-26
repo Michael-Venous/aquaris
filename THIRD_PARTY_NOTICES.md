@@ -33,3 +33,11 @@ loader and GPU drivers are not part of this package; they remain system
 components under their own licenses. The Linux package links the libraries above
 statically into the worker, so it bundles no separate shared libraries; other
 platform packages may differ.
+
+### macOS arm64 package
+
+The macOS package includes the Khronos Vulkan Loader and MoltenVK under
+Apache-2.0, plus LLVM libc++ under Apache-2.0 with LLVM exceptions. Full notices:
+`licenses/Vulkan-Loader-Apache-2.0.txt`, `licenses/MoltenVK-Apache-2.0.txt`, and
+`licenses/libcxx-Apache-2.0-LLVM.txt`. Shaderc, glslang and SPIRV-Tools notices above
+also apply. The native binaries are ad-hoc signed, not Apple-notarized.

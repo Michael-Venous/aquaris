@@ -75,6 +75,10 @@ def find_worker():
                   addon.parent / "build" / "Release" / ("fumaris_liquid_bridge" + suffix)]
     for candidate in candidates:
         if candidate.is_file():
+            # Blender's extension ZIP extractor does not restore Unix mode bits.
+            # Restore only owner execution on our bundled, signed macOS worker.
+            if sys.platform == "darwin" and candidate.parent == addon / "bin" and not os.access(candidate, os.X_OK):
+                candidate.chmod(candidate.stat().st_mode | 0o100)
             return candidate
     raise RuntimeError("The Aquaris worker (the solver program) is missing from this installation. "
                        "Reinstall the Aquaris extension ZIP made for your operating system.")
@@ -114,7 +118,10 @@ def worker_problem(version=None):
     if tag and details.get("platform") and details["platform"] != tag:
         return f"This Aquaris package is for {details['platform']}, but Blender is running on {tag}. Install the matching ZIP."
     built = details.get("extension_version")
-    if version and built and built != ".".join(map(str, version)):
+    # Blender's legacy bl_info is numeric; extension manifests may carry a
+    # SemVer prerelease/build suffix (for example 0.3.35-beta.1).
+    built_core = built.split("-", 1)[0].split("+", 1)[0] if isinstance(built, str) else built
+    if version and built and built_core != ".".join(map(str, version)):
         return f"The worker is from Aquaris {built}, not {'.'.join(map(str, version))}. Restart Blender, or reinstall the extension."
     return ""
 
