@@ -53,6 +53,7 @@ class LIQUID_OT_setup(bpy.types.Operator):
     bl_description = "Add an independent liquid demonstration at the 3D cursor"
     bl_options = {"REGISTER", "UNDO"}
     preset: EnumProperty(name="Preset", items=[
+        ("DROPLETS", "Droplets (small scale)", "Millimetre droplets on an inclined plate with surface tension, adhesion and contact friction"),
         ("SPLASH", "Splash (real-time)", "A ball dropped into a pool, sized to play back live with a surface"),
         ("REALTIME_DAM_BREAK", "Dam Break (real-time)", "A wall of water released into pillars, sized to play back live"),
         ("REALTIME_POUR", "Pour (real-time)", "Continuous inflow into a pool, sized to play back live"),

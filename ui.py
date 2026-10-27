@@ -287,6 +287,8 @@ def _draw(layout, context):
             row.enabled = p.viscosity_preset == "CUSTOM"
             row.prop(p, "viscosity")
             box.prop(p, "surface_tension")
+            box.prop(p, "surface_adhesion")
+            box.prop(p, "contact_friction")
         box = _section(layout, "whitewater", "Whitewater", closed=True)
         if box is not None:
             box.prop(p, "whitewater_generate")

@@ -1,4 +1,4 @@
-> **Aquaris 0.3.37-beta.1 — beta release.** Linux x64, Windows x64 and macOS arm64 / Blender 5.2+.
+> **Aquaris 0.4.0-beta.1 — beta release.** Linux x64, Windows x64 and macOS arm64 / Blender 5.2+.
 > This is prerelease software; keep backups of production scenes and caches.
 
 # Aquaris documentation
@@ -530,3 +530,30 @@ macOS `~/Library/Caches/Aquaris/shaders`). Keys include source, defines, shader
 includes and cache/build version; exact keys and checksums are verified.
 Missing/corrupt entries are recompiled, and deleting the folder simply makes
 the next start cold. The cache is optional and never stores simulation state.
+
+
+## Small-scale droplets (0.4.0 beta)
+
+Quick Setup > Droplets creates millimetre-size beads on an inclined plate with
+surface tension, surface adhesion, and contact friction enabled. It uses finer
+resolution than the large Splash/Dam/Pour presets; smaller particles cost more.
+The setup respects the scene's unit scale and does not change the scene units.
+
+Surface Adhesion attracts liquid only within two solver grid cells of a collider.
+Contact Friction resists sliding relative to that collider, limited by normal
+contact and adhesion impulses. Both can change while playing. Existing scenes
+keep zero adhesion and zero friction until you enable them. Try the Droplets
+setup as a starting point, then adjust for your surface. Large impacts can detach
+liquid; this is an artistic wetting model, not a calibrated material contact angle.
+High adhesion or surface tension needs smaller timesteps and can slow playback.
+Use enough particles to resolve a droplet; a handful of particles cannot represent
+a detailed liquid interface. Whitewater bubbles are separate from liquid droplets.
+
+Mesh Contact (previously labelled Stick to Colliders) only makes the final liquid
+surface meet nearby collider geometry. It does not hold liquid particles in place.
+Use the physical adhesion/friction controls for that purpose.
+
+Linux and macOS extension ZIP extraction can lose executable file mode bits.
+Aquaris restores owner execution on its own bundled worker automatically. A
+read-only installation or a drive mounted noexec can still prevent execution;
+install into your writable user extension directory on a drive that permits it.

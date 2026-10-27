@@ -81,6 +81,8 @@ def settings(scene, domain):
         "viscosity": p.viscosity / scale ** 2,
         # N/m over water's density (m³/s²), into the scene's length unit
         "surface_tension": p.surface_tension / 1000.0 / scale ** 3,
+        "surface_adhesion": p.surface_adhesion / 1000.0 / scale ** 3,
+        "contact_friction": p.contact_friction,
         "particle_radius": p.particle_radius,
         "substeps": p.substeps,
         "max_particles": limits(p)[0],

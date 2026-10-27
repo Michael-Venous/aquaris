@@ -147,6 +147,8 @@ def collapse_outliners_soon():
 
 
 def create(context, preset="DAM_BREAK"):
+    if preset == "DROPLETS":
+        return _droplets(context)
     if preset not in REALTIME and preset not in DETAILED:
         raise ValueError(f"Unknown Aquaris setup: {preset}")
     scene = context.scene
@@ -271,4 +273,41 @@ def create(context, preset="DAM_BREAK"):
         obj.select_set(False)
     domain.select_set(True)
     context.view_layer.objects.active = domain
+    return domain
+
+
+def _droplets(context):
+    """Millimetre droplets on an inclined plate; existing scenes stay untouched."""
+    import math
+    domain = create(context, "REALTIME_DAM_BREAK")
+    p = domain.fumaris_liquid
+    origin = context.scene.cursor.location.copy()
+    for collection in (p.emitter_collection, p.collider_collection):
+        for obj in list(collection.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+    domain.users_collection[0].name = "Aquaris Droplets"
+    scale = max(1e-8, context.scene.unit_settings.scale_length)
+    p.particle_radius = 0.0002 / scale
+    p.mesh_cell_size = 0.00025 / scale
+    p.mesh_cell_relative = False
+    p.bounds_min = origin + Vector((-0.024, -0.024, -0.014)) / scale
+    p.bounds_max = origin + Vector((0.024, 0.024, 0.02)) / scale
+    p.step_size, p.surface_tension = 1.0, 0.073
+    p.surface_adhesion, p.contact_friction = 0.2, 0.5
+    p.whitewater_generate = False
+    p.droplet_scale = 1.0
+    domain.empty_display_size = 0.01 / scale
+    normal = Vector((0, 0.5, math.sqrt(0.75)))
+    plate = _box("Inclined Droplet Plate", p.collider_collection,
+                 origin - normal * (0.001 / scale), (0.04 / scale, 0.04 / scale, 0.002 / scale))
+    plate.rotation_euler.x = -math.pi / 6
+    plate.fumaris_liquid.role = "COLLIDER"
+    for index, (x, radius) in enumerate(((-0.006, 0.0012), (0, 0.002), (0.007, 0.003))):
+        location = origin + Vector((x / scale, 0, 0)) + normal * (0.6 * radius / scale)
+        bead = _sphere(f"Droplet {index + 1}", p.emitter_collection, location, radius / scale)
+        bead.fumaris_liquid.role = "EMITTER"
+        bead.fumaris_liquid.source_shape = "SPHERE"
+        bead.fumaris_liquid.emission_mode = "INITIAL"
+        bead.display_type = "WIRE"
+        bead.hide_render = True
     return domain
