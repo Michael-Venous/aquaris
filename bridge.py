@@ -409,8 +409,15 @@ class Bridge:
         return response, data
 
     def _failure(self, message):
-        tail = "\n".join(tuple(self._stderr))
-        return message + ("\n" + tail if tail else "")
+        lines = tuple(self._stderr)
+        tail = "\n".join(lines)
+        # Driver startup logs can fill a panel before the useful native error.
+        # Lead with our worker's final diagnostic; retain the transport context
+        # and complete bounded log for Copy Diagnostics and support.
+        prefix = "Liquid worker stopped: "
+        reason = next((line[len(prefix):].strip() for line in reversed(lines) if line.startswith(prefix)), "")
+        detail = message + ("\n" + tail if tail else "")
+        return reason + "\n" + detail if reason else detail
 
     def _record_cleanup_error(self, stage, error):
         self._cleanup_errors.append(stage + ": " + str(error))
