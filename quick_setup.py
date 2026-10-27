@@ -311,3 +311,39 @@ def _droplets(context):
         bead.display_type = "WIRE"
         bead.hide_render = True
     return domain
+
+
+def present_droplets(context, domain):
+    """Focus this view without deleting or hiding unrelated scene objects."""
+    area = context.area
+    if bpy.app.background or area is None or area.type != "VIEW_3D":
+        return False
+    region = next((r for r in area.regions if r.type == "WINDOW"), None)
+    space = area.spaces.active
+    if region is None or space.region_3d is None:
+        return False
+    objects = set(domain.users_collection[0].all_objects)
+    for obj in context.selected_objects:
+        obj.select_set(False)
+    for obj in objects:
+        if obj.name in context.view_layer.objects:
+            obj.select_set(True)
+    if space.local_view is None:
+        with context.temp_override(area=area, region=region):
+            bpy.ops.view3d.localview(frame_selected=False)
+    else:
+        for obj in context.view_layer.objects:
+            obj.local_view_set(space, obj in objects)
+    for obj in context.selected_objects:
+        obj.select_set(False)
+    domain.select_set(True)
+    context.view_layer.objects.active = domain
+    scale = max(1e-8, context.scene.unit_settings.scale_length)
+    view = space.region_3d
+    view.view_location = context.scene.cursor.location.copy()
+    view.view_distance = 0.055 / scale
+    view.view_rotation = Vector((0.35, -1.0, 1.3)).to_track_quat("Z", "Y")
+    view.view_perspective = "PERSP"
+    space.clip_start = min(space.clip_start, 0.00005 / scale)
+    area.tag_redraw()
+    return True

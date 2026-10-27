@@ -83,6 +83,8 @@ class LIQUID_OT_setup(bpy.types.Operator):
         context.scene.fumaris_liquid_domain = domain
         if hasattr(context.scene, "fumaris_liquid_playback_domain"):
             context.scene.fumaris_liquid_playback_domain = domain  # what the header's play / stop and shortcuts control
+        if self.preset == "DROPLETS" and quick_setup.present_droplets(context, domain):
+            self.report({"INFO"}, "Droplets shown in Local View; Numpad / returns to your scene")
         quick_setup.collapse_outliners_soon()
         return {"FINISHED"}
 
