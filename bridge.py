@@ -76,9 +76,17 @@ def find_worker():
     for candidate in candidates:
         if candidate.is_file():
             # Blender's extension ZIP extractor does not restore Unix mode bits.
-            # Restore only owner execution on our bundled, signed macOS worker.
-            if sys.platform == "darwin" and candidate.parent == addon / "bin" and not os.access(candidate, os.X_OK):
-                candidate.chmod(candidate.stat().st_mode | 0o100)
+            # Repair only owner execution on our bundled Unix worker, never an
+            # external development binary or symlink target. macOS signatures
+            # cover the bytes, so changing mode does not invalidate the signature.
+            if (os.name != "nt" and candidate.parent == addon / "bin"
+                    and not candidate.is_symlink() and not os.access(candidate, os.X_OK)):
+                try:
+                    candidate.chmod(candidate.stat().st_mode | 0o100)
+                except OSError as exc:
+                    raise RuntimeError("Aquaris cannot make its bundled solver executable. "
+                                       "Install the extension in a writable user extension directory. "
+                                       f"Worker: {candidate}. System error: {exc}") from exc
             return candidate
     raise RuntimeError("The Aquaris worker (the solver program) is missing from this installation. "
                        "Reinstall the Aquaris extension ZIP made for your operating system.")
@@ -106,7 +114,7 @@ def worker_problem(version=None):
     except RuntimeError as exc:
         return str(exc)
     if os.name != "nt" and not os.access(worker, os.X_OK):
-        return "The Aquaris worker is not executable. Reinstall the extension (a copy that lost its file permissions cannot run)."
+        return "The Aquaris worker cannot execute from this location. Check file ownership and whether the installation drive is mounted noexec, or reinstall into your user extension directory."
     info = worker.parent.parent / "build_info.json"
     if not info.is_file():
         return ""  # a development checkout
