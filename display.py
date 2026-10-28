@@ -416,6 +416,10 @@ def refresh_look(domain):
     update_visibility(domain)
 
 
+def _is_identity(matrix):
+    return all(abs(matrix[r][c] - (1.0 if r == c else 0.0)) < 1e-9 for r in range(4) for c in range(4))
+
+
 def ensure_outputs(scene, domain):
     identity = ensure_identity(domain)
     p = domain.fumaris_liquid
@@ -435,6 +439,13 @@ def ensure_outputs(scene, domain):
             if not obj.users_collection:
                 # Deleted in the viewport: the pointer kept it alive but nothing shows it.
                 collection.objects.link(obj)
+            # The liquid is written in world coordinates. An output object that was moved, scaled or parented
+            # (scaling a whole scene down selects them too) showed the liquid shrunk and floating away from the
+            # colliders; keep them at the world origin.
+            if obj.parent is not None or not _is_identity(obj.matrix_world):
+                obj.parent = None
+                obj.location, obj.rotation_euler, obj.scale = (0, 0, 0), (0, 0, 0), (1, 1, 1)
+                obj.delta_location, obj.delta_rotation_euler, obj.delta_scale = (0, 0, 0), (0, 0, 0), (1, 1, 1)
             if label == "Whitewater":
                 _refresh_whitewater_nodes(obj, p.particle_radius * p.whitewater_size)
             elif label != "Surface":

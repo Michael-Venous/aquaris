@@ -18,12 +18,36 @@ def _surface_update(self, context):
         session.surface_changed(self.id_data)
 
 
-VISCOSITY_PRESETS = {"WATER": 0.0, "OIL": 1e-4, "HONEY": 5e-3, "CHOCOLATE": 2e-2, "THICK": 0.2}
+VISCOSITY_PRESETS = {"WATER": 0.0, "SMALL_WATER": 0.0, "OIL": 1e-4, "HONEY": 5e-3, "CHOCOLATE": 2e-2, "THICK": 0.2}
+# Water at two scales. Drops only a few cells across under-resolve their own tension, so small-scale water uses several
+# times water's real 0.073 N/m, a beading contact angle and some grip (droplet benchmark, 2026-10-28); large water
+# needs no surface tension at all and keeps the solver at full speed.
+LIQUID_SURFACE = {"WATER": dict(surface_tension=0.0, contact_angle=90.0, contact_grip=0.0),
+                  "SMALL_WATER": dict(surface_tension=0.5, contact_angle=110.0, contact_grip=0.5,
+                                      surface_adhesion=0.0, contact_friction=0.0)}
 
 
 def _viscosity_preset(self, context):
     if self.viscosity_preset in VISCOSITY_PRESETS:
         self.viscosity = VISCOSITY_PRESETS[self.viscosity_preset]
+    for name, value in LIQUID_SURFACE.get(self.viscosity_preset, {}).items():
+        setattr(self, name, value)
+
+
+def _radius_unit(scale):
+    """(property, label) for showing Particle Radius in a readable unit, as Blender shows a light's radius:
+    millimetres for small radii, centimetres, then metres."""
+    def get(self):
+        return self.particle_radius * max(self.id_data.users_scene[0].unit_settings.scale_length if self.id_data.users_scene else 1.0, 1e-12) / scale
+    def set(self, value):
+        unit = max(self.id_data.users_scene[0].unit_settings.scale_length if self.id_data.users_scene else 1.0, 1e-12)
+        self.particle_radius = value * scale / unit
+    return get, set
+
+
+_mm_get, _mm_set = _radius_unit(0.001)
+_cm_get, _cm_set = _radius_unit(0.01)
+_m_get, _m_set = _radius_unit(1.0)
 
 
 def _range_update(self, context):
@@ -78,8 +102,12 @@ class LiquidProperties(bpy.types.PropertyGroup):
     whitewater_object: PointerProperty(type=bpy.types.Object)
     particle_object: PointerProperty(type=bpy.types.Object)
     mist_object: PointerProperty(type=bpy.types.Object)
-    viscosity_preset: EnumProperty(name="Viscosity Preset", update=_viscosity_preset, default="WATER", items=[
-        ("WATER", "Water", "No viscosity: at the resolutions a grid this size reaches, water's own (1e-6 m²/s) has no visible effect"),
+    viscosity_preset: EnumProperty(name="Liquid Preset", update=_viscosity_preset, default="WATER", items=[
+        ("WATER", "Water", "Water at everyday scale: no viscosity (water's own 1e-6 m²/s has no visible effect at these "
+                           "resolutions) and no surface tension, which keeps the solver fast"),
+        ("SMALL_WATER", "Small-Scale Water", "Water drops and splashes of a few millimetres: surface tension holds drops "
+                                             "together, they bead on surfaces (Contact Angle) and hang on them (Contact Grip). "
+                                             "Use a Particle Radius of about a tenth of the drop radius"),
         ("OIL", "Oil", "1e-4 m²/s"),
         ("HONEY", "Honey", "5e-3 m²/s"),
         ("CHOCOLATE", "Molten Chocolate", "2e-2 m²/s"),
@@ -126,6 +154,17 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                              "throwing up an intact crown), or when a fast collider presses liquid through a "
                                              "thin floor. Higher values are faster but coarser where colliders strike liquid. "
                                              "Can be changed while playing")
+    particle_radius_mm: FloatProperty(name="Particle Radius (mm)", get=_mm_get, set=_mm_set, min=0.01, soft_min=0.05, soft_max=100,
+                                      precision=3, step=1, description="Particle Radius in millimetres")
+    particle_radius_cm: FloatProperty(name="Particle Radius (cm)", get=_cm_get, set=_cm_set, min=0.001, soft_min=0.1, soft_max=100,
+                                      precision=3, step=1, description="Particle Radius in centimetres")
+    particle_radius_m: FloatProperty(name="Particle Radius (m)", get=_m_get, set=_m_set, min=0.0001, soft_max=100,
+                                     precision=3, step=1, description="Particle Radius in metres")
+    show_limits: BoolProperty(name="Limits", get=lambda self: not self.auto_budgets,
+                              set=lambda self, value: setattr(self, "auto_budgets", not value),
+                              description="Set your own particle, collider and surface limits, which stop a setup that is "
+                                          "accidentally far too big before it uses all your graphics memory. Off (default): the "
+                                          "simulation grows as large as it needs")
     particle_radius: FloatProperty(name="Particle Radius", default=0.04, min=0.0001, max=100, soft_min=0.005, soft_max=2, subtype="DISTANCE",
                                    description="The simulation's resolution: the size of one liquid particle. Halving it shows finer "
                                                "detail but takes about eight times the particles and much longer. Takes effect when "

@@ -168,12 +168,10 @@ def _transport(layout, context, domain, compact=False):
     _control(stop, "Stop", "STOP", "CANCEL")
     if compact:
         return
-    from .playback import draw_gpu_selection
-    draw_gpu_selection(box, context)
     settings = box.column()
     fixed = settings.column()
     fixed.enabled = running is None
-    fixed.prop(p, "particle_radius")
+    _radius(fixed, p)
     frames = fixed.row(align=True)
     frames.use_property_split = False  # one row as in Fumaris: the clock, then Warmup or Start and End
     frames.use_property_decorate = False
@@ -188,7 +186,15 @@ def _transport(layout, context, domain, compact=False):
     record = settings.row()
     record.enabled = running is None
     record.prop(p, "record_preview")
-    settings.prop(p, "preview_rate")
+
+
+def _radius(layout, p, scene_scale=None):
+    """Particle Radius in millimetres, or centimetres or metres once it is that large (as a light's radius)."""
+    import bpy
+    scale = bpy.context.scene.unit_settings.scale_length if bpy.context.scene else 1.0
+    metres = p.particle_radius * scale
+    name = "particle_radius_mm" if metres < 0.1 else "particle_radius_cm" if metres < 1.0 else "particle_radius_m"
+    layout.prop(p, name)
 
 
 def _diagnostics(layout, context, domain):
@@ -353,6 +359,10 @@ def _draw(layout, context):
             editable.operator("fumaris_liquid.export_vdb", icon="VOLUME_DATA")
         box = _section(layout, "budgets", "Advanced", closed=True)
         if box is not None:
+            from .playback import draw_gpu_selection
+            draw_gpu_selection(box, context)
+            box.prop(p, "preview_rate")
+            box = box.column()
             box.enabled = running is None
             box.label(text="Region (grows by itself to follow the liquid)")
             box.prop(p, "bounds_min")
@@ -360,12 +370,14 @@ def _draw(layout, context):
             box.label(text="Walls at the region's sides")
             box.row(align=True).prop(p, "domain_walls")
             box.prop(p, "remove_strays")
-            box.prop(p, "auto_budgets")
-            manual = box.column()
-            manual.enabled = not p.auto_budgets
-            manual.prop(p, "max_particles")
-            manual.prop(p, "max_boundary")
-            manual.prop(p, "max_mesh_cells")
+            limits = box.box()
+            row = limits.row()
+            row.prop(p, "show_limits", icon="DOWNARROW_HLT" if p.show_limits else "RIGHTARROW", emboss=False)
+            if p.show_limits:
+                manual = limits.column()
+                manual.prop(p, "max_particles")
+                manual.prop(p, "max_boundary")
+                manual.prop(p, "max_mesh_cells")
             if running is not None:
                 box.label(text="Stop the simulation to change these", icon="INFO")
         box = _section(layout, "diagnostics", "Diagnostics", closed=True)
