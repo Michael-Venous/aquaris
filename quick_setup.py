@@ -297,6 +297,7 @@ def _droplets(context):
     p.step_size, p.surface_tension = 1.0, 0.5
     p.surface_adhesion, p.contact_friction = 0.0, 0.0
     p.contact_angle, p.contact_grip = 110.0, 0.5
+    p.flip_ratio = 0.3  # calm: small drops settle instead of jittering and shedding specks
     p.whitewater_generate = False
     p.droplet_scale = 1.0
     domain.empty_display_size = 0.01 / scale

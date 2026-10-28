@@ -22,8 +22,10 @@ VISCOSITY_PRESETS = {"WATER": 0.0, "SMALL_WATER": 0.0, "OIL": 1e-4, "HONEY": 5e-
 # Water at two scales. Drops only a few cells across under-resolve their own tension, so small-scale water uses several
 # times water's real 0.073 N/m, a beading contact angle and some grip (droplet benchmark, 2026-10-28); large water
 # needs no surface tension at all and keeps the solver at full speed.
-LIQUID_SURFACE = {"WATER": dict(surface_tension=0.0, contact_angle=90.0, contact_grip=0.0),
-                  "SMALL_WATER": dict(surface_tension=0.5, contact_angle=110.0, contact_grip=0.5,
+# Small drops also need calmer particles: at FLIP 0.95 a settled 2 mm drop kept moving at 83 mm/s and shed 9 % of its
+# particles as specks; at 0.3 it moved at 7 mm/s and shed under 1 % (test drop, 2026-10-28).
+LIQUID_SURFACE = {"WATER": dict(surface_tension=0.0, contact_angle=90.0, contact_grip=0.0, flip_ratio=0.95),
+                  "SMALL_WATER": dict(surface_tension=0.5, contact_angle=110.0, contact_grip=0.5, flip_ratio=0.3,
                                       surface_adhesion=0.0, contact_friction=0.0)}
 
 
