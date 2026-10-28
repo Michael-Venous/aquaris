@@ -287,6 +287,10 @@ def _draw(layout, context):
             row.enabled = p.viscosity_preset == "CUSTOM"
             row.prop(p, "viscosity")
             box.prop(p, "surface_tension")
+            col = box.column()
+            col.active = p.surface_tension > 0
+            col.prop(p, "contact_angle")
+            col.prop(p, "contact_grip")
             box.prop(p, "surface_adhesion")
             box.prop(p, "contact_friction")
         box = _section(layout, "whitewater", "Whitewater", closed=True)

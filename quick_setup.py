@@ -292,8 +292,11 @@ def _droplets(context):
     p.mesh_cell_relative = False
     p.bounds_min = origin + Vector((-0.024, -0.024, -0.014)) / scale
     p.bounds_max = origin + Vector((0.024, 0.024, 0.02)) / scale
-    p.step_size, p.surface_tension = 1.0, 0.073
-    p.surface_adhesion, p.contact_friction = 0.2, 0.5
+    # Drops a few cells across under-resolve their own tension: several times real water (0.073) holds them
+    # together; the contact angle and grip let them bead, hang and slide (droplet benchmark, 2026-10-28).
+    p.step_size, p.surface_tension = 1.0, 0.5
+    p.surface_adhesion, p.contact_friction = 0.0, 0.0
+    p.contact_angle, p.contact_grip = 110.0, 0.5
     p.whitewater_generate = False
     p.droplet_scale = 1.0
     domain.empty_display_size = 0.01 / scale

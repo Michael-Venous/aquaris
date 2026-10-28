@@ -102,6 +102,15 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                    description="Resistance to sliding relative to a collider, limited by contact and adhesion forces. "
                                                "0 allows water to slide freely; higher values help small drops cling on tilted surfaces. "
                                                "Does not affect liquid away from a collider. Can be changed while playing")
+    contact_angle: FloatProperty(name="Contact Angle", default=90, min=0, max=180, precision=0, step=100,
+                                 description="With Surface Tension: the angle at which the liquid meets a collider, in degrees. "
+                                             "Low values wet and spread (clean glass about 30-70), 90 is neutral, high values bead up "
+                                             "(a waxy leaf about 110-150). At small drop sizes the shape tops out near a hemisphere. "
+                                             "Can be changed while playing")
+    contact_grip: FloatProperty(name="Contact Grip", default=0, min=0, max=1, subtype="FACTOR",
+                                description="With Surface Tension: how strongly liquid touching a collider holds against sliding along "
+                                            "it, so small drops hang on a window while heavy ones slide. Scales with Surface Tension. "
+                                            "0 lets it slide freely. Can be changed while playing")
     flip_ratio: FloatProperty(name="FLIP Ratio", default=0.95, min=0, max=1, precision=2, subtype="FACTOR",
                               description="How lively the liquid is. Higher keeps more splash, spray and small detail (0.95 suits "
                                           "most water); lower gives calmer, smoother, thicker-looking motion. Can be changed while playing")
