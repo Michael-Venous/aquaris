@@ -24,9 +24,13 @@ VISCOSITY_PRESETS = {"WATER": 0.0, "SMALL_WATER": 0.0, "OIL": 1e-4, "HONEY": 5e-
 # needs no surface tension at all and keeps the solver at full speed.
 # Small drops also need calmer particles: at FLIP 0.95 a settled 2 mm drop kept moving at 83 mm/s and shed 9 % of its
 # particles as specks; at 0.3 it moved at 7 mm/s and shed under 1 % (test drop, 2026-10-28).
-LIQUID_SURFACE = {"WATER": dict(surface_tension=0.0, contact_angle=90.0, contact_grip=0.0, flip_ratio=0.95),
-                  "SMALL_WATER": dict(surface_tension=0.5, contact_angle=110.0, contact_grip=0.5, flip_ratio=0.3,
-                                      surface_adhesion=0.0, contact_friction=0.0)}
+LIQUID_SURFACE = {"WATER": dict(surface_tension=0.0, contact_angle=90.0, contact_grip=0.0, flip_ratio=0.95, surface_smoothing=1.0),
+                  "SMALL_WATER": dict(surface_tension=0.5, contact_angle=110.0, contact_grip=0.3, flip_ratio=0.3,
+                                      surface_adhesion=0.0, contact_friction=0.0,
+                                      # A drop is only a few grid cells wide, so ripples a few particles across stay in the
+                                      # liquid (tension cannot see them); stronger smoothing on a slightly coarser surface
+                                      # meshes it glassy.
+                                      surface_smoothing=3.0, mesh_cell_relative=True, mesh_cell_factor=1.5)}
 
 
 def _viscosity_preset(self, context):
@@ -250,9 +254,10 @@ class LiquidProperties(bpy.types.PropertyGroup):
                                   description="Mesh-only contact; does not attract or hold particles. Let the liquid's surface meet colliders it rests against (a glass, a floor, a tank "
                                               "wall) instead of standing off them by about a particle radius. Without it, water in "
                                               "a glass shows a thin uneven layer of air against the glass")
-    surface_smoothing: FloatProperty(update=_surface_update, name="Surface Smoothing", default=1.0, min=0, max=1, subtype="FACTOR",
+    surface_smoothing: FloatProperty(update=_surface_update, name="Surface Smoothing", default=1.0, min=0, max=4, soft_max=4, precision=2,
                                      description="Smoothing of the liquid surface: higher removes small dimples and lumps but "
-                                                 "softens fine detail and takes a little longer")
+                                                 "softens fine detail and takes a little longer. Above 1 it also evens out lumps a few "
+                                                 "particles wide (small drops: 2-3); the GPU surfaces only, the processor mesher stops at 1")
     surface_velocity: BoolProperty(update=_surface_update, name="Motion Blur Data", default=True,
                                    description="Save how fast each point of the surface moves in baked and recorded frames, so the "
                                                "liquid gets motion blur in renders (turn on Motion Blur in the render settings). It "

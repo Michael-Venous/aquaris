@@ -296,7 +296,8 @@ def _droplets(context):
     # together; the contact angle and grip let them bead, hang and slide (droplet benchmark, 2026-10-28).
     p.step_size, p.surface_tension = 1.0, 0.5
     p.surface_adhesion, p.contact_friction = 0.0, 0.0
-    p.contact_angle, p.contact_grip = 110.0, 0.5
+    p.contact_angle, p.contact_grip = 110.0, 0.3
+    p.surface_smoothing = 3.0
     p.flip_ratio = 0.3  # calm: small drops settle instead of jittering and shedding specks
     p.whitewater_generate = False
     p.droplet_scale = 1.0
