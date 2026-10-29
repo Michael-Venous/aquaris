@@ -262,7 +262,8 @@ bake.
 
 ## Limits and surface detail
 
-**Automatic Limits** (on by default) lets a domain use up to the solver's own
+Limits live in a collapsible **Limits** box under **Advanced**, closed and off
+by default, as in Mantaflow and FLIP Fluids. **Automatic Limits** (on by default) lets a domain use up to the solver's own
 limits: 4 million liquid particles, 8 million collider samples and 64 million
 surface cells (a fixed Particle Budget may be set up to 8 million for
 particle-only output). Nothing is reserved in advance; memory is taken as the
@@ -403,10 +404,13 @@ Surface preview shows the surface as simulated (the lookups would cost a fast
 scene a fifth of its frame rate).
 
 **Surface Smoothing** filters the finished surface mesh to remove the
-particle-scale dimples that make calm liquid look hammered. Vertices move at
-most about a particle radius at full strength, and not where the liquid behind
-them is thin, so thin sheets keep their shape. New domains and the Quick Setups start at 1.0; 0 gives the unfiltered
-reconstruction.
+particle-scale dimples that make calm liquid look hammered. It ranges from 0 to
+4 (the CPU meshers stop at 1). Vertices move at most about (0.25 + 0.75 x
+smoothing) particle radii, and less where the liquid behind them is thin, so
+detached droplets and thin sheets keep their shape; a bump joined to the body
+of the liquid is smoothed with it rather than left standing as a spike. New
+domains and the Quick Setups start at 1.0; Small-Scale Water uses 3; 0 gives
+the unfiltered reconstruction.
 
 **Motion Blur Data** stores a velocity for every surface vertex of baked and
 recorded frames (it has no visible effect in the viewport),
@@ -425,10 +429,11 @@ The domain's panel (Properties > Physics, and the Aquaris tab of the 3D view's
 sidebar) starts with the **Simulate** block, which is always open: the status
 (with a bake's progress and time left, and afterwards how the last bake went),
 Play, Bake and Reset, Draft and Final, Particle Radius, the frame range (Use
-Timeline with Warmup, or Start and End), Record
-Preview and Preview Rate. Below it are Participant Collections, Liquid,
-Whitewater, Surface and Display, Cache and Export, Advanced (region, walls,
-budgets) and Diagnostics (the GPU, the last frame's timings, how full the
+Timeline with Warmup, or Start and End) and Record Preview. Particle Radius is
+shown in millimetres, switching to centimetres from 0.1 m and to metres from
+1 m (it follows the scene's unit scale). Below it are Participant Collections,
+Liquid, Whitewater, Surface and Display, Cache and Export, Advanced (Simulation
+GPU, Preview Rate, region, walls and the Limits box) and Diagnostics (the GPU, the last frame's timings, how full the
 particle budget is, and Copy Diagnostics).
 
 In **Cache and Export**, **+** beside Cache Slot switches to the next unused
@@ -456,13 +461,13 @@ collects the details to send with a support request.
 
 ## Interactive performance
 
-**Preview Rate** (under Play and Bake) sets how fast the live preview plays:
+**Preview Rate** (under Advanced) sets how fast the live preview plays:
 **Scene Frame Rate** (default) shows frames at the scene's frame rate, so the
 liquid moves in real time and the graphics card rests between frames; **As Fast
 As Possible** shows each frame as soon as it is simulated. Bakes always run at
 full speed.
 
-**Simulation GPU**, in the domain's Play/Bake controls and in Preferences > Add-ons >
+**Simulation GPU**, under the domain's Advanced section and in Preferences > Add-ons >
 Aquaris, chooses the card for the next preview or bake. This is an add-on-wide
 preference, shared by domains. Stop the current simulation before changing it.
 
@@ -535,7 +540,8 @@ the next start cold. The cache is optional and never stores simulation state.
 ## Small-scale droplets (0.4.0 beta)
 
 Quick Setup > Droplets creates millimetre-size beads on an inclined plate with
-surface tension, surface adhesion, and contact friction enabled. It uses finer
+the Small-Scale Water settings (surface tension, contact angle and grip; no
+artistic adhesion or friction). It uses finer
 resolution than the large Splash/Dam/Pour presets; smaller particles cost more.
 The setup respects the scene's unit scale and does not change the scene units.
 
@@ -548,6 +554,24 @@ liquid; this is an artistic wetting model, not a calibrated material contact ang
 High adhesion or surface tension needs smaller timesteps and can slow playback.
 Use enough particles to resolve a droplet; a handful of particles cannot represent
 a detailed liquid interface. Whitewater bubbles are separate from liquid droplets.
+
+**Liquid Preset** (previously Viscosity Preset) sets the liquid's material in
+one step: Water, Small-Scale Water, Oil, Honey, Chocolate and Thick. Water is
+the large-scale default (no surface tension, FLIP 0.95). **Small-Scale Water**
+is for drops of a few millimetres: Surface Tension 0.5, Contact Angle 110,
+Contact Grip 0.3, FLIP ratio 0.3 (calms the restless jitter of a resting drop),
+no artistic adhesion or friction, Surface Smoothing 3 and Surface Cell 1.5.
+A practical starting point is a particle radius of 0.1-0.15 mm, so a drop is at
+least a dozen particles across; 0.1 mm is rounder and takes about twice as long.
+
+Beneath Surface Tension, active while it is above 0:
+**Contact Angle** (0-180 degrees) is how water meets a collider: below 90 it
+wets and spreads, above 90 it beads (a leaf). **Contact Grip** (0-1) holds the
+edge of a drop where it touches a collider, so small drops hang on a window
+while heavier ones slide. While surface tension is on, particles that drift
+loose from the surface of a small body are drawn back onto it, so a resting drop
+does not grow beads and spikes; this costs a few percent and is off whenever
+surface tension is 0, so large scenes are unchanged.
 
 Mesh Contact (previously labelled Stick to Colliders) only makes the final liquid
 surface meet nearby collider geometry. It does not hold liquid particles in place.
