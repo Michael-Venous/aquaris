@@ -392,7 +392,7 @@ origins, and inherited instance velocity. No Python OpenVDB library is required.
 
 ## Splash detail and motion blur
 
-**Stick to Colliders** (on by default) lets the liquid's surface meet the
+**Mesh Contact** (previously Stick to Colliders, on by default) lets the liquid's surface meet the
 colliders it rests against. The particles keep about a radius away from a
 solid, so without it the surface stands off a glass, a floor or a tank wall by
 that much and ripples with them: water in a glass then shows a thin, uneven
